@@ -34,39 +34,156 @@ hr { border-color: #222 !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Constants ─────────────────────────────────────────────────────────────────
-PLOTLY_THEME = dict(
-    paper_bgcolor="#0f0f0f", plot_bgcolor="#0f0f0f",
-    font=dict(family="DM Sans", color="#e8e8e0", size=12),
-    xaxis=dict(gridcolor="#1e1e1e", linecolor="#2a2a2a"),
-    yaxis=dict(gridcolor="#1e1e1e", linecolor="#2a2a2a"),
-    colorway=["#c8f060","#60c8f0","#f060c8","#f0c860","#60f0c8","#c860f0"],
-)
-COLORS = ["#c8f060","#60c8f0","#f060c8","#f0c860","#60f0c8","#c860f0","#f09060","#9060f0"]
+# ── Color schemes ─────────────────────────────────────────────────────────────
+COLOR_SCHEMES = {
+    "Lima 🟢":      ["#c8f060","#60c8f0","#f060c8","#f0c860","#60f0c8","#c860f0","#f09060","#9060f0"],
+    "Neon 🔵":      ["#00f5ff","#ff006e","#ffbe0b","#8338ec","#3a86ff","#fb5607","#06d6a0","#ef476f"],
+    "Pastel 🌸":    ["#ffb3c6","#bde0fe","#caffbf","#ffd6a5","#fdffb6","#c8b6ff","#a8dadc","#f4a261"],
+    "Mono ⬜":      ["#ffffff","#cccccc","#999999","#666666","#444444","#bbbbbb","#aaaaaa","#888888"],
+    "Fogo 🔴":      ["#ff4d4d","#ff8c00","#ffd700","#ff6b6b","#ff9a3c","#ffcc02","#e63946","#f4a261"],
+    "Oceano 🌊":    ["#0096c7","#00b4d8","#48cae4","#90e0ef","#ade8f4","#023e8a","#0077b6","#caf0f8"],
+    "Ardósia 🩶":   ["#94a3b8","#7c8fa3","#64748b","#a8b8c8","#b0bec5","#78909c","#90a4ae","#607d8b"],
+    "Terra 🤎":     ["#a87c5a","#c4a882","#8b6347","#d4b896","#7a5c3e","#b89068","#967055","#c8a87a"],
+    "Sage 🌿":      ["#7a9e7e","#9ab89e","#5a8060","#b4c8b4","#6b8f6e","#88a88a","#4e7252","#a0b8a0"],
+    "Chumbo 🌑":    ["#8892a0","#6e7a88","#a4aeb8","#545e6a","#b8c0c8","#404850","#7a8490","#c0c8d0"],
+}
+
+def get_colors() -> list:
+    return COLOR_SCHEMES.get(st.session_state.get("color_scheme", "Lima 🟢"), COLOR_SCHEMES["Lima 🟢"])
+
+def get_accent() -> str:
+    return get_colors()[0]
+
+def build_plotly_theme() -> dict:
+    return dict(
+        paper_bgcolor="#0f0f0f", plot_bgcolor="#0f0f0f",
+        font=dict(family="DM Sans", color="#e8e8e0", size=12),
+        xaxis=dict(gridcolor="#1e1e1e", linecolor="#2a2a2a"),
+        yaxis=dict(gridcolor="#1e1e1e", linecolor="#2a2a2a"),
+        colorway=get_colors(),
+    )
 
 CATEGORY_MAP = {
-    "ifood": "Alimentação", "rappi": "Alimentação", "mcdonalds": "Alimentação",
-    "burger": "Alimentação", "subway": "Alimentação", "padaria": "Alimentação",
-    "mercado": "Alimentação", "supermercado": "Alimentação", "carrefour": "Alimentação",
-    "restaurante": "Alimentação", "lanche": "Alimentação", "pizza": "Alimentação",
-    "uber eats": "Alimentação", "pão de açúcar": "Alimentação",
-    "uber": "Transporte", "99": "Transporte", "cabify": "Transporte",
-    "shell": "Transporte", "ipiranga": "Transporte", "posto": "Transporte",
-    "estacionamento": "Transporte", "onibus": "Transporte", "metro": "Transporte",
+    # Alimentação — iFood
+    "ifd*": "Alimentação",
+    "ifood": "Alimentação",
+    # Alimentação — estabelecimentos
+    "zaffari": "Alimentação",
+    "companhiazaffari": "Alimentação",
+    "banca cafe acores": "Alimentação",
+    "la brescia": "Alimentação",
+    "armazem e fruteira": "Alimentação",
+    "themis restaurante": "Alimentação",
+    "rappi": "Alimentação",
+    "mcdonalds": "Alimentação",
+    "burger": "Alimentação",
+    "subway": "Alimentação",
+    "padaria": "Alimentação",
+    "mercado": "Alimentação",
+    "supermercado": "Alimentação",
+    "carrefour": "Alimentação",
+    "restaurante": "Alimentação",
+    "lanche": "Alimentação",
+    "pizza": "Alimentação",
+    "pão de açúcar": "Alimentação",
+    # Transporte
+    "uber* trip": "Transporte",
+    "uber uber *trip": "Transporte",
+    "uber": "Transporte",
+    "99": "Transporte",
+    "cabify": "Transporte",
+    "shell": "Transporte",
+    "ipiranga": "Transporte",
+    "posto": "Transporte",
+    "estacionamento": "Transporte",
+    "onibus": "Transporte",
+    "metro": "Transporte",
     "passagem": "Transporte",
-    "netflix": "Streaming", "spotify": "Streaming", "amazon prime": "Streaming",
-    "hbo": "Streaming", "disney": "Streaming", "globoplay": "Streaming",
-    "farmacia": "Saúde", "drogaria": "Saúde", "drogasil": "Saúde",
-    "ultrafarma": "Saúde", "consulta": "Saúde", "medico": "Saúde",
-    "clinica": "Saúde", "academia": "Saúde",
-    "pix": "Transferência", "ted": "Transferência", "doc": "Transferência",
-    "transferencia": "Transferência",
-    "aluguel": "Moradia", "condominio": "Moradia", "luz": "Moradia",
-    "agua": "Moradia", "internet": "Moradia",
-    "claro": "Telecom", "vivo": "Telecom", "tim": "Telecom", "oi": "Telecom",
-    "amazon": "Compras", "americanas": "Compras", "magazine": "Compras",
-    "shopee": "Compras", "aliexpress": "Compras",
-    "steam": "Lazer", "cinema": "Lazer", "bar": "Lazer", "cerveja": "Lazer",
+    # Saúde
+    "panvel": "Saúde",
+    "sao joao farmacias": "Saúde",
+    "farmaciaosaojoao": "Saúde",
+    "drogaria achutti": "Saúde",
+    "rd saude": "Saúde",
+    "bioterapica": "Saúde",
+    "m e pa clinica": "Saúde",
+    "dr. central": "Saúde",
+    "rafael ramos amaral": "Saúde",
+    "farmacia": "Saúde",
+    "drogaria": "Saúde",
+    "drogasil": "Saúde",
+    "ultrafarma": "Saúde",
+    "consulta": "Saúde",
+    "medico": "Saúde",
+    "clinica": "Saúde",
+    "academia": "Saúde",
+    # Streaming
+    "dm *spotify": "Streaming",
+    "spotify": "Streaming",
+    "netflix": "Streaming",
+    "amazon prime": "Streaming",
+    "hbo": "Streaming",
+    "disney": "Streaming",
+    "globoplay": "Streaming",
+    # Telecom
+    "telefonica brasil": "Telecom",
+    "conta vivo": "Telecom",
+    "vivo": "Telecom",
+    "claro": "Telecom",
+    "tim": "Telecom",
+    "oi": "Telecom",
+    # Compras
+    "amazon": "Compras",
+    "magalupay": "Compras",
+    "pichau": "Compras",
+    "pagali": "Compras",
+    "pagseguro international": "Compras",
+    "pay2all": "Compras",
+    "nuvei do brasil": "Compras",
+    "americanas": "Compras",
+    "magazine": "Compras",
+    "shopee": "Compras",
+    "aliexpress": "Compras",
+    # Vestuário
+    "h&m": "Vestuário",
+    "lupo": "Vestuário",
+    "hering": "Vestuário",
+    "renner": "Vestuário",
+    "riachuelo": "Vestuário",
+    "zara": "Vestuário",
+    # Lazer
+    "tabarcaria": "Lazer",
+    "trinca tabarcaria": "Lazer",
+    "ingresso com": "Lazer",
+    "steam": "Lazer",
+    "cinema": "Lazer",
+    "bar": "Lazer",
+    "cerveja": "Lazer",
+    # Casa
+    "mp *appgas": "Casa",
+    "appgas": "Casa",
+    "aluguel": "Casa",
+    "condominio": "Casa",
+    "luz": "Casa",
+    "agua": "Casa",
+    "internet": "Casa",
+    # Investimento
+    "aplicação rdb": "Investimento",
+    "aplicacao rdb": "Investimento",
+    "rdb": "Investimento",
+    "cdb": "Investimento",
+    "tesouro": "Investimento",
+    # Profissional
+    "conselho regional de psicologia": "Profissional",
+    "crp": "Profissional",
+    # Impostos
+    "municipio de porto alegre": "Impostos",
+    "receita federal": "Impostos",
+    "iptu": "Impostos",
+    "ipva": "Impostos",
+    # Pagamento de Fatura
+    "pagamento de fatura": "Pagamento de Fatura",
+    # Transferência Pessoal (pessoas físicas — fallback via lógica abaixo)
 }
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -74,10 +191,15 @@ def fmt_brl(val: float) -> str:
     return f"R$ {abs(val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def guess_category(desc: str) -> str:
+    import re
     d = desc.lower()
+    if "pagamento de fatura" in d:
+        return "Pagamento de Fatura"
     for kw, cat in CATEGORY_MAP.items():
         if kw in d:
             return cat
+    if re.search(r"•{3}\.\d{3}\.\d{3}-•{2}", desc):
+        return "Transferência Pessoal"
     return "Outros"
 
 def parse_ofx(file_bytes: bytes) -> pd.DataFrame:
@@ -198,11 +320,16 @@ if df.empty:
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
+    st.markdown("### Aparência")
+    st.selectbox("Esquema de cores", list(COLOR_SCHEMES.keys()),
+                 key="color_scheme")
+    st.divider()
     st.markdown("### Filtros")
     meses = sorted(df["mes"].unique())
     meses_sel = st.multiselect("Meses", meses, default=meses)
     cats = sorted(df["categoria"].unique())
-    cats_sel = st.multiselect("Categorias", cats, default=cats)
+    default_cats = [c for c in cats if c != "Pagamento de Fatura"]
+    cats_sel = st.multiselect("Categorias", cats, default=default_cats)
     tipo = st.radio("Tipo", ["Gastos", "Receitas", "Tudo"], index=0)
     st.divider()
     if st.button("🗑 Apagar todos os dados"):
@@ -243,9 +370,9 @@ with tab1:
     else:
         fig = go.Figure()
         fig.add_bar(x=por_mes["mes"], y=por_mes["valor_abs"],
-                    marker_color="#c8f060", marker_line_width=0,
+                    marker_color=get_accent(), marker_line_width=0,
                     hovertemplate="<b>%{x}</b><br>R$ %{y:,.2f}<extra></extra>")
-        fig.update_layout(**PLOTLY_THEME, height=380, bargap=0.3,
+        fig.update_layout(**build_plotly_theme(), height=380, bargap=0.3,
                           xaxis_title=None, yaxis_title="R$", showlegend=False)
         st.plotly_chart(fig, use_container_width=True)
         media = por_mes["valor_abs"].mean()
@@ -262,17 +389,17 @@ with tab2:
         with col_a:
             fig_bar = go.Figure()
             fig_bar.add_bar(x=por_cat["valor_abs"], y=por_cat["categoria"],
-                            orientation="h", marker_color="#c8f060", marker_line_width=0,
+                            orientation="h", marker_color=get_accent(), marker_line_width=0,
                             hovertemplate="<b>%{y}</b><br>R$ %{x:,.2f}<extra></extra>")
-            fig_bar.update_layout(**PLOTLY_THEME, height=380,
+            fig_bar.update_layout(**build_plotly_theme(), height=380,
                                   xaxis_title="R$", yaxis_title=None, showlegend=False)
             st.plotly_chart(fig_bar, use_container_width=True)
         with col_b:
             fig_pie = px.pie(por_cat, values="valor_abs", names="categoria",
-                             hole=0.55, color_discrete_sequence=COLORS)
+                             hole=0.55, color_discrete_sequence=get_colors())
             fig_pie.update_traces(textfont_size=11,
                 hovertemplate="<b>%{label}</b><br>R$ %{value:,.2f}<br>%{percent}<extra></extra>")
-            fig_pie.update_layout(**PLOTLY_THEME, height=380,
+            fig_pie.update_layout(**build_plotly_theme(), height=380,
                                   showlegend=True, legend=dict(font=dict(size=11)))
             st.plotly_chart(fig_pie, use_container_width=True)
 
@@ -283,9 +410,9 @@ with tab3:
         st.info("Nenhum gasto no período.")
     else:
         fig_ev = px.bar(por_mes_cat, x="mes", y="valor_abs", color="categoria",
-                        barmode="stack", color_discrete_sequence=COLORS,
+                        barmode="stack", color_discrete_sequence=get_colors(),
                         labels={"valor_abs":"R$","mes":"","categoria":""})
-        fig_ev.update_layout(**PLOTLY_THEME, height=420, bargap=0.25,
+        fig_ev.update_layout(**build_plotly_theme(), height=420, bargap=0.25,
                              legend=dict(orientation="h", yanchor="bottom", y=1.02,
                                          font=dict(size=11)))
         fig_ev.update_traces(
