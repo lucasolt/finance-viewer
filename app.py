@@ -567,7 +567,7 @@ else:
 c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("Total gasto",     fmt_brl(gastos))
 c2.metric("Total recebido",  fmt_brl(receitas))
-c3.metric("Saldo período",   fmt_brl_signed(saldo))
+c3.metric("Saldo período",   fmt_brl_signed(saldo), delta=f"{'+' if saldo >= 0 else ''}{saldo:.2f}", delta_color="normal")
 c4.metric("Transações",      len(dff))
 c5.metric("Networth aprox.", networth_label)
 
@@ -806,9 +806,21 @@ with tab4:
     show_raw = dff[["data","descricao","categoria","valor","origem"]].copy()
     show_raw = show_raw.sort_values("data", ascending=False).reset_index(drop=True)
     show = show_raw.copy()
-    show["valor"] = show["valor"].map(lambda v: fmt_brl_signed(v))
-    show.columns = ["Data","Descrição","Categoria","Valor","Origem"]
-    st.dataframe(show, width='stretch', height=480)
+    show["valor_fmt"] = show["valor"].map(fmt_brl_signed)
+    show = show.drop(columns=["valor"]).rename(columns={
+        "data":"Data","descricao":"Descrição","categoria":"Categoria",
+        "valor_fmt":"Valor","origem":"Origem"
+    })
+
+    def color_valor(val):
+        if val.startswith("- "):
+            return "color: #ff6b6b"
+        return "color: #a8e063"
+
+    st.dataframe(
+        show.style.map(color_valor, subset=["Valor"]),
+        width='stretch', height=480
+    )
     st.download_button("⬇ baixar transações (.xlsx)",
                        df_to_xlsx(show_raw.rename(columns={"data":"Data","descricao":"Descrição","categoria":"Categoria","valor":"Valor","origem":"Origem"})),
                        "transacoes.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
