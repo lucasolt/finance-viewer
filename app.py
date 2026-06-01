@@ -549,9 +549,12 @@ elif tipo == "Receitas":
     dff = dff[dff["valor"] > 0]
 dff["valor_abs"] = dff["valor"].abs()
 
+# dff_total: aplica todos os filtros exceto tipo — usado nos KPIs
+dff_total = df[mask_data & df["categoria"].isin(cats_sel)].copy()
+
 # ── KPIs ──────────────────────────────────────────────────────────────────────
-gastos   = dff[dff["valor"] < 0]["valor"].sum()
-receitas = dff[dff["valor"] > 0]["valor"].sum()
+gastos   = dff_total[dff_total["valor"] < 0]["valor"].sum()
+receitas = dff_total[dff_total["valor"] > 0]["valor"].sum()
 saldo    = gastos + receitas
 
 # Networth: BALAMT mais recente + saldo líquido da Caixinha
@@ -568,7 +571,7 @@ c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("Total gasto",     fmt_brl(gastos))
 c2.metric("Total recebido",  fmt_brl(receitas))
 c3.metric("Saldo período",   fmt_brl_signed(saldo), delta=f"{'+' if saldo >= 0 else ''}{saldo:.2f}", delta_color="normal")
-c4.metric("Transações",      len(dff))
+c4.metric("Transações",      len(dff_total))
 c5.metric("Networth aprox.", networth_label)
 
 # Mini-painel de patrimônio
