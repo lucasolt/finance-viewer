@@ -607,14 +607,21 @@ with st.sidebar:
         if c not in st.session_state.cat_state:
             st.session_state.cat_state[c] = c not in EXCLUDED_BY_DEFAULT
 
-    col_a, col_b = st.columns(2)
+    col_a, col_b, col_c = st.columns(3)
     if col_a.button("✓ Tudo", width='stretch'):
         for c in cats:
             st.session_state[f"cat_{c}"] = True
             st.session_state.cat_state[c] = True
         save_pref("cat_state", json.dumps(st.session_state.cat_state))
         st.rerun()
-    if col_b.button("✗ Nada", width='stretch'):
+    if col_b.button("◎ Padrão", width='stretch'):
+        for c in cats:
+            val = c not in EXCLUDED_BY_DEFAULT
+            st.session_state[f"cat_{c}"] = val
+            st.session_state.cat_state[c] = val
+        save_pref("cat_state", json.dumps(st.session_state.cat_state))
+        st.rerun()
+    if col_c.button("✗ Nada", width='stretch'):
         for c in cats:
             st.session_state[f"cat_{c}"] = False
             st.session_state.cat_state[c] = False
