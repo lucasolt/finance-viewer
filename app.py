@@ -192,6 +192,9 @@ CATEGORY_MAP = {
 def fmt_brl(val: float) -> str:
     return f"R$ {abs(val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
+def df_to_csv(df: pd.DataFrame) -> bytes:
+    return df.to_csv(index=False, decimal=",", sep=";").encode("utf-8-sig")
+
 def guess_category(desc: str) -> str:
     import re
     d = desc.lower()
@@ -523,6 +526,8 @@ with tab1:
                           xaxis_title=None, yaxis_title="R$",
                           legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=11)))
         st.plotly_chart(fig, width='stretch')
+        _tbl = pd.DataFrame({"Mês": meses_u, "Receitas": rec_mes.values, "Gastos": gas_mes.abs().values, "Saldo": sal_mes.values})
+        st.download_button("⬇ baixar tabela (csv)", df_to_csv(_tbl), "por_mes.csv", "text/csv", use_container_width=True)
     else:
         por_mes = (dff.groupby("mes")["valor_abs"].sum().reset_index().sort_values("mes"))
         fig = go.Figure()
@@ -532,6 +537,7 @@ with tab1:
         fig.update_layout(**build_plotly_theme(), height=380, bargap=0.3,
                           xaxis_title=None, yaxis_title="R$", showlegend=False)
         st.plotly_chart(fig, width='stretch')
+        st.download_button("⬇ baixar tabela (csv)", df_to_csv(por_mes.rename(columns={"mes":"Mês","valor_abs":"Valor"})), "por_mes.csv", "text/csv", use_container_width=True)
         media = por_mes["valor_abs"].mean()
         st.markdown(f"<p style='color:#555;font-size:0.8rem;font-family:DM Mono,monospace;'>média mensal: <span style='color:{get_accent()}'>{fmt_brl(media)}</span></p>",
                     unsafe_allow_html=True)
@@ -626,10 +632,12 @@ with tab3:
         st.plotly_chart(fig_ev, width='stretch')
 
 with tab4:
-    show = dff[["data","descricao","categoria","valor"]].copy()
+    show_raw = dff[["data","descricao","categoria","valor","origem"]].copy()
+    show_raw = show_raw.sort_values("data", ascending=False).reset_index(drop=True)
+    show = show_raw.copy()
     show["valor"] = show["valor"].map(lambda v: f"{'+' if v > 0 else ''}{fmt_brl(v)}")
-    show = show.sort_values("data", ascending=False).reset_index(drop=True)
-    show.columns = ["Data","Descrição","Categoria","Valor"]
+    show.columns = ["Data","Descrição","Categoria","Valor","Origem"]
     st.dataframe(show, width='stretch', height=480)
-    st.markdown("<p style='color:#333;font-size:0.75rem;font-family:DM Mono,monospace;'>edite o CATEGORY_MAP no código para ajustar categorias</p>",
-                unsafe_allow_html=True)
+    st.download_button("⬇ baixar transações (csv)",
+                       df_to_csv(show_raw.rename(columns={"data":"Data","descricao":"Descrição","categoria":"Categoria","valor":"Valor","origem":"Origem"})),
+                       "transacoes.csv", "text/csv", use_container_width=True)
