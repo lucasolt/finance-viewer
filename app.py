@@ -242,10 +242,12 @@ def parse_ofx(file_bytes: bytes) -> tuple:
             })
         # Extract BALAMT
         try:
-            bal = account.statement.balance
-            if bal and bal.amount:
-                bal_date = bal.date.date() if hasattr(bal.date, "date") else bal.date
-                saldos[str(bal_date)] = float(bal.amount)
+            stmt = account.statement
+            if hasattr(stmt, 'balance') and stmt.balance is not None:
+                bal_date = stmt.balance_date
+                if hasattr(bal_date, 'date'):
+                    bal_date = bal_date.date()
+                saldos[str(bal_date)] = float(stmt.balance)
         except Exception:
             pass
     df = pd.DataFrame(rows)
