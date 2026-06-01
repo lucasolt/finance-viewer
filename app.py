@@ -226,9 +226,11 @@ def guess_category(desc: str) -> str:
         return "Transferência Pessoal"
     return "Outros"
 
-def parse_ofx(file_bytes: bytes) -> pd.DataFrame:
+def parse_ofx(file_bytes: bytes) -> tuple:
+    """Returns (transactions_df, balamt_dict) where balamt_dict = {date: amount}"""
     ofx = OfxParser.parse(io.BytesIO(file_bytes))
     rows = []
+    saldos = {}
     for account in ofx.accounts:
         for txn in account.statement.transactions:
             rows.append({
@@ -236,13 +238,21 @@ def parse_ofx(file_bytes: bytes) -> pd.DataFrame:
                 "descricao": txn.memo or txn.payee or "",
                 "valor": float(txn.amount),
             })
+        # Extract BALAMT
+        try:
+            bal = account.statement.balance
+            if bal and bal.amount:
+                bal_date = bal.date.date() if hasattr(bal.date, "date") else bal.date
+                saldos[str(bal_date)] = float(bal.amount)
+        except Exception:
+            pass
     df = pd.DataFrame(rows)
     if df.empty:
-        return df
+        return df, saldos
     df["data"] = pd.to_datetime(df["data"])
     df["mes"] = df["data"].dt.to_period("M").astype(str)
     df["categoria"] = df["descricao"].apply(guess_category)
-    return df
+    return df, saldos
 
 @st.cache_resource
 def get_supabase():
@@ -288,6 +298,24 @@ def save_to_supabase(df: pd.DataFrame):
     sb.table("transacoes").upsert(rows, on_conflict="data,descricao,valor").execute()
     load_from_supabase.clear()
 
+# ── Saldos ───────────────────────────────────────────────────────────────────
+def save_saldo(data: str, balamt: float, origem: str = "extrato"):
+    get_supabase().table("saldos").upsert(
+        {"data": data, "balamt": balamt, "origem": origem},
+        on_conflict="data,origem"
+    ).execute()
+    load_saldos.clear()
+
+@st.cache_data(ttl=60)
+def load_saldos() -> pd.DataFrame:
+    sb = get_supabase()
+    res = sb.table("saldos").select("*").execute()
+    if not res.data:
+        return pd.DataFrame(columns=["data","balamt","origem"])
+    df = pd.DataFrame(res.data)
+    df["data"] = pd.to_datetime(df["data"])
+    return df.sort_values("data")
+
 # ── Preferences ──────────────────────────────────────────────────────────────
 def load_prefs() -> dict:
     sb = get_supabase()
@@ -319,6 +347,7 @@ if not st.session_state.authed:
 
 # ── Load data + prefs ────────────────────────────────────────────────────────
 df = load_from_supabase()
+df_saldos = load_saldos()
 prefs = load_prefs()
 
 # Apply saved prefs to session state (only first run)
@@ -343,12 +372,14 @@ col_up1, col_up2 = st.columns(2)
 
 def process_upload(files, origem: str):
     frames, errors = [], []
+    all_saldos = {}
     for f in files:
         try:
-            parsed = parse_ofx(f.read())
+            parsed, saldos = parse_ofx(f.read())
             if not parsed.empty:
                 parsed["origem"] = origem
                 frames.append(parsed)
+            all_saldos.update(saldos)
         except Exception as e:
             errors.append(f"{f.name}: {e}")
     if frames:
@@ -357,7 +388,10 @@ def process_upload(files, origem: str):
         )
         with st.spinner("salvando no banco..."):
             save_to_supabase(new_df)
-        st.success(f"{len(new_df)} transações ({origem}) salvas.")
+            for data, balamt in all_saldos.items():
+                save_saldo(data, balamt, origem)
+        st.success(f"{len(new_df)} transações ({origem}) salvas." +
+                   (f" {len(all_saldos)} saldo(s) registrado(s)." if all_saldos else ""))
     for e in errors:
         st.error(e)
 
@@ -508,14 +542,41 @@ elif tipo == "Receitas":
 dff["valor_abs"] = dff["valor"].abs()
 
 # ── KPIs ──────────────────────────────────────────────────────────────────────
-gastos  = dff[dff["valor"] < 0]["valor"].sum()
+gastos   = dff[dff["valor"] < 0]["valor"].sum()
 receitas = dff[dff["valor"] > 0]["valor"].sum()
-saldo   = gastos + receitas
-c1, c2, c3, c4 = st.columns(4)
+saldo    = gastos + receitas
+
+# Networth: BALAMT mais recente + saldo líquido da Caixinha
+caixinha_mask = df["descricao"].str.lower().str.contains("aplicação rdb|aplicacao rdb|resgate rdb", na=False)
+saldo_caixinha = -df[caixinha_mask]["valor"].sum()  # débitos são negativos, inverte
+if not df_saldos.empty:
+    balamt_recente = float(df_saldos.sort_values("data").iloc[-1]["balamt"])
+    networth = balamt_recente + saldo_caixinha
+    networth_label = fmt_brl(networth)
+else:
+    networth_label = "—"
+
+c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("Total gasto",    fmt_brl(gastos))
 c2.metric("Total recebido", fmt_brl(receitas))
-c3.metric("Saldo",          fmt_brl(saldo))
+c3.metric("Saldo período",  fmt_brl(saldo))
 c4.metric("Transações",     len(dff))
+c5.metric("Networth aprox.", networth_label)
+
+# Mini-painel de patrimônio
+if not df_saldos.empty or saldo_caixinha != 0:
+    st.markdown(
+        f"""<div style='display:flex;gap:1.5rem;margin:0.5rem 0 0.2rem;'>
+        <div style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;'>
+            🏦 conta: <span style='color:#e8e8e0'>{fmt_brl(balamt_recente) if not df_saldos.empty else "—"}</span>
+        </div>
+        <div style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;'>
+            📦 caixinha: <span style='color:#e8e8e0'>{fmt_brl(saldo_caixinha) if saldo_caixinha != 0 else "—"}</span>
+        </div>
+        {"<div style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;'>📅 saldo em: <span style='color:#e8e8e0'>" + str(df_saldos.sort_values('data').iloc[-1]['data'].date()) + "</span></div>" if not df_saldos.empty else ""}
+        </div>""",
+        unsafe_allow_html=True
+    )
 st.divider()
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
