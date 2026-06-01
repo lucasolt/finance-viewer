@@ -441,44 +441,38 @@ with st.sidebar:
     import datetime
     _min_date = df["data"].min().date()
     _max_date = df["data"].max().date()
-    # load saved range if available
-    _saved_range = st.session_state.get("date_range", None)
-    if _saved_range and isinstance(_saved_range, (list, tuple)) and len(_saved_range) == 2:
-        try:
-            _default_range = (datetime.date.fromisoformat(str(_saved_range[0])),
-                              datetime.date.fromisoformat(str(_saved_range[1])))
-        except:
-            _default_range = (_min_date, _max_date)
-    else:
-        _default_range = (_min_date, _max_date)
-    # quick shortcuts — set before widget renders
-    _qcols = st.columns(3)
-    if _qcols[0].button("12m", use_container_width=True):
-        _end = _max_date
-        _start = _end.replace(year=_end.year - 1)
-        st.session_state.pop("date_range_input", None)
-        st.session_state["_dr_override"] = (_start, _end)
-        st.rerun()
-    if _qcols[1].button("YTD", use_container_width=True):
-        st.session_state.pop("date_range_input", None)
-        st.session_state["_dr_override"] = (datetime.date(_max_date.year, 1, 1), _max_date)
-        st.rerun()
-    if _qcols[2].button("Tudo", use_container_width=True):
-        st.session_state.pop("date_range_input", None)
-        st.session_state["_dr_override"] = (_min_date, _max_date)
-        st.rerun()
-    if "_dr_override" in st.session_state:
-        _default_range = st.session_state.pop("_dr_override")
-    date_range = st.date_input("Período", value=_default_range,
-                               min_value=_min_date, max_value=_max_date,
-                               key="date_range_input")
-    # handle partial selection (user picked only start)
-    if isinstance(date_range, (list, tuple)) and len(date_range) == 2:
-        d_start, d_end = date_range[0], date_range[1]
-    elif isinstance(date_range, (list, tuple)) and len(date_range) == 1:
-        d_start, d_end = date_range[0], _max_date
-    else:
+
+    # Dropdown de presets
+    PRESET_OPTS = ["Tudo", "Últimos 12 meses", "Este ano (YTD)", "Este mês", "Personalizado"]
+    preset = st.selectbox("Período", PRESET_OPTS, index=0, key="date_preset")
+
+    # Calcula o range com base no preset
+    if preset == "Tudo":
         d_start, d_end = _min_date, _max_date
+    elif preset == "Últimos 12 meses":
+        d_end = _max_date
+        try:
+            d_start = d_end.replace(year=d_end.year - 1)
+        except ValueError:
+            d_start = d_end.replace(year=d_end.year - 1, day=28)
+        d_start = max(d_start, _min_date)
+    elif preset == "Este ano (YTD)":
+        d_start = max(datetime.date(_max_date.year, 1, 1), _min_date)
+        d_end = _max_date
+    elif preset == "Este mês":
+        d_start = max(datetime.date(_max_date.year, _max_date.month, 1), _min_date)
+        d_end = _max_date
+    else:  # Personalizado — dois date inputs separados
+        c_ini, c_fim = st.columns(2)
+        d_start = c_ini.date_input("De", value=_min_date,
+                                   min_value=_min_date, max_value=_max_date,
+                                   key="date_custom_start")
+        d_end = c_fim.date_input("Até", value=_max_date,
+                                 min_value=_min_date, max_value=_max_date,
+                                 key="date_custom_end")
+        # garante ordem correta
+        if d_start > d_end:
+            d_start, d_end = d_end, d_start
 
     _tipo_opts = ["Gastos", "Receitas", "Tudo"]
     _tipo_idx = _tipo_opts.index(st.session_state.get("tipo_radio", "Gastos")) if st.session_state.get("tipo_radio") in _tipo_opts else 0
