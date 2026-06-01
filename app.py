@@ -262,7 +262,7 @@ def parse_ofx(file_bytes: bytes, origem: str = "extrato") -> tuple:
                 "descricao": txn.memo or txn.payee or "",
                 "valor": float(txn.amount),
             })
-        # Extract BALAMT — só pra extrato da conta, não fatura
+        # Extract BALAMT e RENDIMENTO — só pra extrato da conta, não fatura
         if origem == "extrato":
             try:
                 stmt = account.statement
@@ -270,9 +270,38 @@ def parse_ofx(file_bytes: bytes, origem: str = "extrato") -> tuple:
                     bal_date = stmt.balance_date
                     if hasattr(bal_date, 'date'):
                         bal_date = bal_date.date()
-                    saldos[str(bal_date)] = float(stmt.balance)
+                    saldos[str(bal_date)] = {"balamt": float(stmt.balance), "rendimento_conta": None}
             except Exception:
                 pass
+
+    # Parse RENDIMENTO LIQUIDO from raw BAL tags (ofxparse doesn't read these)
+    if origem == "extrato":
+        try:
+            from bs4 import BeautifulSoup as _BS
+            raw_text = file_bytes.decode("utf-8", errors="ignore")
+            soup = _BS(raw_text, "html.parser")
+            for bal_tag in soup.find_all("bal"):
+                name_tag = bal_tag.find("name")
+                val_tag = bal_tag.find("value")
+                dtasof_tag = bal_tag.find("dtasof")
+                if name_tag and val_tag and "rendimento" in name_tag.get_text().lower():
+                    val = float(val_tag.get_text().strip())
+                    if dtasof_tag:
+                        from ofxparse import OfxParser as _OP
+                        try:
+                            d = _OP.parseOfxDateTime(dtasof_tag.get_text().strip()).date()
+                        except:
+                            d = list(saldos.keys())[-1] if saldos else None
+                    else:
+                        d = list(saldos.keys())[-1] if saldos else None
+                    if d:
+                        key = str(d)
+                        if key in saldos:
+                            saldos[key]["rendimento_conta"] = val
+                        else:
+                            saldos[key] = {"balamt": None, "rendimento_conta": val}
+        except Exception:
+            pass
     df = pd.DataFrame(rows)
     if df.empty:
         return df, saldos
@@ -371,11 +400,13 @@ def save_to_supabase(df: pd.DataFrame):
     load_from_supabase.clear()
 
 # ── Saldos ───────────────────────────────────────────────────────────────────
-def save_saldo(data: str, balamt: float, origem: str = "extrato"):
-    get_supabase().table("saldos").upsert(
-        {"data": data, "balamt": balamt, "origem": origem},
-        on_conflict="data,origem"
-    ).execute()
+def save_saldo(data: str, info: dict, origem: str = "extrato"):
+    row = {"data": data, "origem": origem}
+    if info.get("balamt") is not None:
+        row["balamt"] = info["balamt"]
+    if info.get("rendimento_conta") is not None:
+        row["rendimento_conta"] = info["rendimento_conta"]
+    get_supabase().table("saldos").upsert(row, on_conflict="data,origem").execute()
     load_saldos.clear()
 
 @st.cache_data(ttl=60)
@@ -383,9 +414,11 @@ def load_saldos() -> pd.DataFrame:
     sb = get_supabase()
     res = sb.table("saldos").select("*").execute()
     if not res.data:
-        return pd.DataFrame(columns=["data","balamt","origem"])
+        return pd.DataFrame(columns=["data","balamt","rendimento_conta","origem"])
     df = pd.DataFrame(res.data)
     df["data"] = pd.to_datetime(df["data"])
+    if "rendimento_conta" not in df.columns:
+        df["rendimento_conta"] = None
     return df.sort_values("data")
 
 # ── Preferences ──────────────────────────────────────────────────────────────
@@ -462,8 +495,8 @@ def process_upload(files, origem: str):
         )
         with st.spinner("salvando no banco..."):
             save_to_supabase(new_df)
-            for data, balamt in all_saldos.items():
-                save_saldo(data, balamt, origem)
+            for data, info in all_saldos.items():
+                save_saldo(data, info, origem)
         st.session_state.upload_key += 1
         st.success(f"{len(new_df)} transações ({origem}) salvas." +
                    (f" {len(all_saldos)} saldo(s) registrado(s)." if all_saldos else ""))
@@ -832,21 +865,17 @@ if df_saldos.empty:
     st.info("Nenhum dado de saldo ainda — faça upload dos extratos.")
 else:
     colors = get_colors()
-    accent = get_accent()
 
-    # Caixinha acumulada por data (usando todas as transações, não só as filtradas)
+    # Caixinha acumulada
     caixinha_txns = df[df["descricao"].str.lower().str.contains(
         "aplicação rdb|aplicacao rdb|resgate rdb", na=False
     )].sort_values("data").copy()
     caixinha_txns["caixinha_acum"] = (-caixinha_txns["valor"]).cumsum()
 
-    # Saldos da conta ordenados
     saldos_sorted = df_saldos.sort_values("data").copy()
     saldos_sorted["networth"] = saldos_sorted["balamt"]
 
-    # Adiciona caixinha ao networth interpolando por data
     if not caixinha_txns.empty:
-        # Para cada ponto de saldo, pega o acumulado da caixinha até aquela data
         def caixinha_em(data):
             antes = caixinha_txns[caixinha_txns["data"] <= data]
             return float(antes["caixinha_acum"].iloc[-1]) if not antes.empty else 0.0
@@ -855,43 +884,74 @@ else:
     else:
         saldos_sorted["caixinha"] = 0.0
 
-    fig_nw = go.Figure()
-    fig_nw.add_scatter(
-        x=saldos_sorted["data"], y=saldos_sorted["networth"],
-        name="Networth", mode="lines+markers",
-        line=dict(color=colors[0], width=2), marker=dict(size=6),
-        hovertemplate="<b>%{x|%Y-%m-%d}</b><br>Networth: R$ %{y:,.2f}<extra></extra>",
-        fill="tozeroy", fillcolor="rgba(200,240,96,0.15)",
-    )
-    fig_nw.add_scatter(
-        x=saldos_sorted["data"], y=saldos_sorted["balamt"],
-        name="Conta", mode="lines+markers",
-        line=dict(color=colors[1], width=2, dash="dot"), marker=dict(size=5),
-        hovertemplate="<b>%{x|%Y-%m-%d}</b><br>Conta: R$ %{y:,.2f}<extra></extra>",
-    )
-    if saldos_sorted["caixinha"].sum() != 0:
-        fig_nw.add_scatter(
-            x=saldos_sorted["data"], y=saldos_sorted["caixinha"],
-            name="Caixinha (aprox.)", mode="lines+markers",
-            line=dict(color=colors[2], width=2, dash="dash"), marker=dict(size=5),
-            hovertemplate="<b>%{x|%Y-%m-%d}</b><br>Caixinha: R$ %{y:,.2f}<extra></extra>",
-        )
-    fig_nw.update_layout(
-        **build_plotly_theme(), height=440,
-        xaxis_title=None, yaxis_title="R$",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=11)),
-    )
-    st.plotly_chart(fig_nw, width='stretch')
+    nw_tab1, nw_tab2 = st.tabs(["Acumulado", "Rendimento mensal"])
 
-    # Tabela resumo
-    st.markdown("<p style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:0.08em;'>histórico de saldos</p>", unsafe_allow_html=True)
-    tbl = saldos_sorted[["data","balamt","caixinha","networth"]].copy()
-    tbl.columns = ["Data","Conta","Caixinha","Networth"]
-    tbl["Data"] = tbl["Data"].dt.date
-    for col in ["Conta","Caixinha","Networth"]:
-        tbl[col] = tbl[col].map(fmt_brl)
-    st.dataframe(tbl.sort_values("Data", ascending=False).reset_index(drop=True),
-                 width='stretch', height=300)
+    with nw_tab1:
+        fig_nw = go.Figure()
+        fig_nw.add_scatter(
+            x=saldos_sorted["data"], y=saldos_sorted["networth"],
+            name="Networth", mode="lines+markers",
+            line=dict(color=colors[0], width=2), marker=dict(size=6),
+            hovertemplate="<b>%{x|%Y-%m-%d}</b><br>Networth: R$ %{y:,.2f}<extra></extra>",
+            fill="tozeroy", fillcolor="rgba(200,240,96,0.15)",
+        )
+        fig_nw.add_scatter(
+            x=saldos_sorted["data"], y=saldos_sorted["balamt"],
+            name="Conta", mode="lines+markers",
+            line=dict(color=colors[1], width=2, dash="dot"), marker=dict(size=5),
+            hovertemplate="<b>%{x|%Y-%m-%d}</b><br>Conta: R$ %{y:,.2f}<extra></extra>",
+        )
+        if saldos_sorted["caixinha"].sum() != 0:
+            fig_nw.add_scatter(
+                x=saldos_sorted["data"], y=saldos_sorted["caixinha"],
+                name="Caixinha (aprox.)", mode="lines+markers",
+                line=dict(color=colors[2], width=2, dash="dash"), marker=dict(size=5),
+                hovertemplate="<b>%{x|%Y-%m-%d}</b><br>Caixinha: R$ %{y:,.2f}<extra></extra>",
+            )
+        fig_nw.update_layout(
+            **build_plotly_theme(), height=420,
+            xaxis_title=None, yaxis_title="R$",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=11)),
+        )
+        st.plotly_chart(fig_nw, width='stretch')
+
+        tbl = saldos_sorted[["data","balamt","caixinha","networth"]].copy()
+        tbl.columns = ["Data","Conta","Caixinha","Networth"]
+        tbl["Data"] = tbl["Data"].dt.date
+        for col in ["Conta","Caixinha","Networth"]:
+            tbl[col] = tbl[col].map(fmt_brl)
+        st.dataframe(tbl.sort_values("Data", ascending=False).reset_index(drop=True),
+                     width='stretch', height=280)
+
+    with nw_tab2:
+        rend = saldos_sorted[saldos_sorted["rendimento_conta"].notna()].copy()
+        if rend.empty:
+            st.info("Nenhum dado de rendimento ainda — re-faça o upload dos extratos para popular.")
+        else:
+            fig_rend = go.Figure()
+            fig_rend.add_bar(
+                x=rend["data"], y=rend["rendimento_conta"],
+                marker_color=colors[0], marker_line_width=0,
+                hovertemplate="<b>%{x|%Y-%m-%d}</b><br>Rendimento: R$ %{y:,.2f}<extra></extra>",
+            )
+            fig_rend.update_layout(
+                **build_plotly_theme(), height=380, bargap=0.3,
+                xaxis_title=None, yaxis_title="R$", showlegend=False,
+            )
+            st.plotly_chart(fig_rend, width='stretch')
+
+            total_rend = rend["rendimento_conta"].sum()
+            media_rend = rend["rendimento_conta"].mean()
+            rc1, rc2 = st.columns(2)
+            rc1.metric("Total rendido (conta)", fmt_brl(total_rend))
+            rc2.metric("Média mensal", fmt_brl(media_rend))
+
+            tbl_r = rend[["data","rendimento_conta"]].copy()
+            tbl_r.columns = ["Data","Rendimento"]
+            tbl_r["Data"] = tbl_r["Data"].dt.date
+            tbl_r["Rendimento"] = tbl_r["Rendimento"].map(fmt_brl)
+            st.dataframe(tbl_r.sort_values("Data", ascending=False).reset_index(drop=True),
+                         width='stretch', height=280)
 
 with tab4:
     show_raw = dff_tabela[["data","descricao","categoria","valor","origem","reembolsado"]].copy()
