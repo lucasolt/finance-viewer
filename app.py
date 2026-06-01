@@ -403,12 +403,15 @@ with st.sidebar:
     if _qcols[0].button("12m", use_container_width=True):
         _end = _max_date
         _start = _end.replace(year=_end.year - 1)
+        st.session_state.pop("date_range_input", None)
         st.session_state["_dr_override"] = (_start, _end)
         st.rerun()
     if _qcols[1].button("YTD", use_container_width=True):
+        st.session_state.pop("date_range_input", None)
         st.session_state["_dr_override"] = (datetime.date(_max_date.year, 1, 1), _max_date)
         st.rerun()
     if _qcols[2].button("Tudo", use_container_width=True):
+        st.session_state.pop("date_range_input", None)
         st.session_state["_dr_override"] = (_min_date, _max_date)
         st.rerun()
     if "_dr_override" in st.session_state:
