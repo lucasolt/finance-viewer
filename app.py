@@ -80,7 +80,6 @@ CATEGORY_MAP = {
     "burger": "Alimentação",
     "subway": "Alimentação",
     "padaria": "Alimentação",
-    "mercado": "Alimentação",
     "supermercado": "Alimentação",
     "carrefour": "Alimentação",
     "restaurante": "Alimentação",
@@ -135,6 +134,8 @@ CATEGORY_MAP = {
     "oi": "Telecom",
     # Compras
     "amazon": "Compras",
+    "mercado pago": "Compras",
+    "mercado livre": "Compras",
     "magalupay": "Compras",
     "pichau": "Compras",
     "pagali": "Compras",
@@ -203,7 +204,7 @@ def guess_category(desc: str) -> str:
     d = desc.lower()
     if "pagamento de fatura" in d:
         return "Pagamento de Fatura"
-    for kw, cat in CATEGORY_MAP.items():
+    for kw, cat in sorted(CATEGORY_MAP.items(), key=lambda x: -len(x[0])):
         if kw in d:
             return cat
     if re.search(r"•{3}\.\d{3}\.\d{3}-•{2}", desc):
