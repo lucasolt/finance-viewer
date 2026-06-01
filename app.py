@@ -15,6 +15,16 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;600&display=swap');
 html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; }
+
+/* Slider neutro */
+[data-baseweb="slider"] [data-testid="stThumbValue"],
+[data-baseweb="slider"] [role="slider"] {
+    background-color: #555 !important;
+    border-color: #555 !important;
+}
+[data-baseweb="slider"] [data-testid="stSliderTrackFill"] {
+    background-color: #444 !important;
+}
 .stApp { background-color: #0f0f0f; color: #e8e8e0; }
 header[data-testid="stHeader"] { background: transparent; }
 h1 { font-family: 'DM Mono', monospace !important; font-size: 1.6rem !important; color: #c8f060 !important; letter-spacing: -0.03em; margin-bottom: 0 !important; }
@@ -39,6 +49,8 @@ hr { border-color: #222 !important; }
 COLOR_SCHEMES = {
     "Lima 🟢":      ["#c8f060","#60c8f0","#f060c8","#f0c860","#60f0c8","#c860f0","#f09060","#9060f0",
                      "#a8d040","#40a8d0","#d040a8","#d0a840","#40d0a8","#a840d0","#d07040","#7040d0"],
+    "Lima Escuro 🌑": ["#8aaa20","#208aaa","#aa2088","#aaa820","#20aa88","#8820aa","#aa5020","#5020aa",
+                     "#6a8a10","#106a8a","#8a1068","#8a8a10","#108a68","#681088","#8a3010","#301088"],
     "Neon 🔵":      ["#00f5ff","#ff006e","#ffbe0b","#8338ec","#3a86ff","#fb5607","#06d6a0","#ef476f",
                      "#00c8d4","#d4006e","#d4a000","#6a28cc","#2a66df","#db3500","#00b680","#cf274f"],
     "Pastel 🌸":    ["#ffb3c6","#bde0fe","#caffbf","#ffd6a5","#fdffb6","#c8b6ff","#a8dadc","#f4a261",
