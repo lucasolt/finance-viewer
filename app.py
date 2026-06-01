@@ -286,7 +286,7 @@ if not st.session_state.authed:
     st.title("💸 gastos")
     pwd = st.text_input("senha", type="password", label_visibility="collapsed",
                         placeholder="senha")
-    if st.button("entrar", use_container_width=True):
+    if st.button("entrar", width='stretch'):
         if pwd == st.secrets["APP_PASSWORD"]:
             st.session_state.authed = True
             st.rerun()
@@ -409,13 +409,13 @@ with st.sidebar:
             st.session_state.cat_state[c] = c not in EXCLUDED_BY_DEFAULT
 
     col_a, col_b = st.columns(2)
-    if col_a.button("✓ Tudo", use_container_width=True):
+    if col_a.button("✓ Tudo", width='stretch'):
         for c in cats:
             st.session_state[f"cat_{c}"] = True
             st.session_state.cat_state[c] = True
         save_pref("cat_state", json.dumps(st.session_state.cat_state))
         st.rerun()
-    if col_b.button("✗ Nada", use_container_width=True):
+    if col_b.button("✗ Nada", width='stretch'):
         for c in cats:
             st.session_state[f"cat_{c}"] = False
             st.session_state.cat_state[c] = False
@@ -439,12 +439,12 @@ with st.sidebar:
     else:
         st.warning("Tem certeza? Isso apaga tudo.")
         col_c, col_d = st.columns(2)
-        if col_c.button("✓ Sim", use_container_width=True):
+        if col_c.button("✓ Sim", width='stretch'):
             get_supabase().table("transacoes").delete().neq("id", 0).execute()
             load_from_supabase.clear()
             st.session_state.confirm_delete = False
             st.rerun()
-        if col_d.button("✗ Não", use_container_width=True):
+        if col_d.button("✗ Não", width='stretch'):
             st.session_state.confirm_delete = False
             st.rerun()
     if st.button("🚪 Sair"):
@@ -503,7 +503,7 @@ with tab1:
         fig.update_layout(**build_plotly_theme(), height=420, bargap=0.25, barmode="relative",
                           xaxis_title=None, yaxis_title="R$",
                           legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=11)))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     else:
         por_mes = (dff.groupby("mes")["valor_abs"].sum().reset_index().sort_values("mes"))
         fig = go.Figure()
@@ -512,7 +512,7 @@ with tab1:
                     hovertemplate="<b>%{x}</b><br>R$ %{y:,.2f}<extra></extra>")
         fig.update_layout(**build_plotly_theme(), height=380, bargap=0.3,
                           xaxis_title=None, yaxis_title="R$", showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
         media = por_mes["valor_abs"].mean()
         st.markdown(f"<p style='color:#555;font-size:0.8rem;font-family:DM Mono,monospace;'>média mensal: <span style='color:{get_accent()}'>{fmt_brl(media)}</span></p>",
                     unsafe_allow_html=True)
@@ -523,8 +523,10 @@ with tab2:
     elif tipo == "Tudo":
         # Side-by-side: receitas vs gastos por categoria
         rec_cat = dff[dff["valor"] > 0].groupby("categoria")["valor"].sum().rename("Receita")
-        gas_cat = dff[dff["valor"] < 0].groupby("categoria")["valor"].apply(abs).rename("Gasto")
-        por_cat_tudo = pd.concat([rec_cat, gas_cat], axis=1).fillna(0).reset_index()
+        gas_cat = dff[dff["valor"] < 0].groupby("categoria")["valor"].abs().rename("Gasto")
+        por_cat_tudo = pd.concat([rec_cat, gas_cat], axis=1).fillna(0)
+        por_cat_tudo.index.name = "categoria"
+        por_cat_tudo = por_cat_tudo.reset_index()
         por_cat_tudo = por_cat_tudo.sort_values("Gasto", ascending=False)
         colors = get_colors()
         fig_bar = go.Figure()
@@ -537,7 +539,7 @@ with tab2:
         fig_bar.update_layout(**build_plotly_theme(), height=420, barmode="group",
                               xaxis_title="R$", yaxis_title=None,
                               legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=11)))
-        st.plotly_chart(fig_bar, use_container_width=True)
+        st.plotly_chart(fig_bar, width='stretch')
     else:
         por_cat = (dff.groupby("categoria")["valor_abs"]
                    .sum().reset_index().sort_values("valor_abs", ascending=False))
@@ -549,7 +551,7 @@ with tab2:
                             hovertemplate="<b>%{y}</b><br>R$ %{x:,.2f}<extra></extra>")
             fig_bar.update_layout(**build_plotly_theme(), height=380,
                                   xaxis_title="R$", yaxis_title=None, showlegend=False)
-            st.plotly_chart(fig_bar, use_container_width=True)
+            st.plotly_chart(fig_bar, width='stretch')
         with col_b:
             fig_pie = px.pie(por_cat, values="valor_abs", names="categoria",
                              hole=0.55, color_discrete_sequence=get_colors())
@@ -557,7 +559,7 @@ with tab2:
                 hovertemplate="<b>%{label}</b><br>R$ %{value:,.2f}<br>%{percent}<extra></extra>")
             fig_pie.update_layout(**build_plotly_theme(), height=380,
                                   showlegend=True, legend=dict(font=dict(size=11)))
-            st.plotly_chart(fig_pie, use_container_width=True)
+            st.plotly_chart(fig_pie, width='stretch')
 
 with tab3:
     if dff.empty:
@@ -590,7 +592,7 @@ with tab3:
         fig_ev.add_hline(y=0, line_color="#444", line_width=1)
         fig_ev.update_layout(**build_plotly_theme(), height=460, bargap=0.2, barmode="relative",
                              legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=10)))
-        st.plotly_chart(fig_ev, use_container_width=True)
+        st.plotly_chart(fig_ev, width='stretch')
     else:
         por_mes_cat = (dff.groupby(["mes","categoria"])["valor_abs"]
                        .sum().reset_index().sort_values("mes"))
@@ -602,13 +604,13 @@ with tab3:
                                          font=dict(size=11)))
         fig_ev.update_traces(
             hovertemplate="<b>%{x}</b><br>%{data.name}<br>R$ %{y:,.2f}<extra></extra>")
-        st.plotly_chart(fig_ev, use_container_width=True)
+        st.plotly_chart(fig_ev, width='stretch')
 
 with tab4:
     show = dff[["data","descricao","categoria","valor"]].copy()
     show["valor"] = show["valor"].map(lambda v: f"{'+' if v > 0 else ''}{fmt_brl(v)}")
     show = show.sort_values("data", ascending=False).reset_index(drop=True)
     show.columns = ["Data","Descrição","Categoria","Valor"]
-    st.dataframe(show, use_container_width=True, height=480)
+    st.dataframe(show, width='stretch', height=480)
     st.markdown("<p style='color:#333;font-size:0.75rem;font-family:DM Mono,monospace;'>edite o CATEGORY_MAP no código para ajustar categorias</p>",
                 unsafe_allow_html=True)
