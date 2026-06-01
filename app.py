@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 from ofxparse import OfxParser
 from supabase import create_client
 import io
+import json
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Gastos", page_icon="💸", layout="wide")
@@ -263,6 +264,17 @@ def save_to_supabase(df: pd.DataFrame):
     sb.table("transacoes").upsert(rows, on_conflict="data,descricao,valor").execute()
     load_from_supabase.clear()
 
+# ── Preferences ──────────────────────────────────────────────────────────────
+def load_prefs() -> dict:
+    sb = get_supabase()
+    res = sb.table("preferencias").select("*").execute()
+    return {r["chave"]: r["valor"] for r in res.data} if res.data else {}
+
+def save_pref(chave: str, valor: str):
+    get_supabase().table("preferencias").upsert(
+        {"chave": chave, "valor": valor}, on_conflict="chave"
+    ).execute()
+
 # ── Login ─────────────────────────────────────────────────────────────────────
 if "authed" not in st.session_state:
     st.session_state.authed = False
@@ -281,8 +293,23 @@ if not st.session_state.authed:
     st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
 
-# ── Load data ─────────────────────────────────────────────────────────────────
+# ── Load data + prefs ────────────────────────────────────────────────────────
 df = load_from_supabase()
+prefs = load_prefs()
+
+# Apply saved prefs to session state (only first run)
+if "prefs_loaded" not in st.session_state:
+    if "color_scheme" in prefs:
+        st.session_state["color_scheme"] = prefs["color_scheme"]
+    if "cat_state" in prefs:
+        st.session_state["cat_state"] = json.loads(prefs["cat_state"])
+    if "tipo" in prefs:
+        st.session_state["tipo_radio"] = prefs["tipo"]
+    if "ano_sel" in prefs:
+        st.session_state["ano_sel"] = prefs["ano_sel"]
+    if "m_range" in prefs:
+        st.session_state["m_range"] = tuple(json.loads(prefs["m_range"]))
+    st.session_state["prefs_loaded"] = True
 
 # ── Header ────────────────────────────────────────────────────────────────────
 st.title("💸 controle de gastos")
@@ -332,19 +359,30 @@ if df.empty:
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("### Aparência")
-    st.selectbox("Esquema de cores", list(COLOR_SCHEMES.keys()),
+    scheme = st.selectbox("Esquema de cores", list(COLOR_SCHEMES.keys()),
                  key="color_scheme")
+    save_pref("color_scheme", scheme)
     st.divider()
     st.markdown("### Filtros")
     # Ano
     anos = sorted(df["data"].dt.year.unique())
-    ano_sel = st.selectbox("Ano", ["Todos"] + [str(a) for a in anos], index=0)
+    _ano_default_idx = 0
+    if "ano_sel" in st.session_state:
+        _opts = ["Todos"] + [str(a) for a in anos]
+        _ano_default_idx = _opts.index(st.session_state["ano_sel"]) if st.session_state["ano_sel"] in _opts else 0
+    ano_sel = st.selectbox("Ano", ["Todos"] + [str(a) for a in anos], index=_ano_default_idx, key="ano_sel_w")
+    save_pref("ano_sel", ano_sel)
     # Range de meses
     MONTH_NAMES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
+    _m_default = st.session_state.get("m_range", (1, 12))
     m_range = st.select_slider("Período", options=list(range(1, 13)),
                                format_func=lambda x: MONTH_NAMES[x-1],
-                               value=(1, 12))
-    tipo = st.radio("Tipo", ["Gastos", "Receitas", "Tudo"], index=0)
+                               value=_m_default, key="m_range")
+    save_pref("m_range", str(list(m_range)))
+    _tipo_opts = ["Gastos", "Receitas", "Tudo"]
+    _tipo_idx = _tipo_opts.index(st.session_state.get("tipo_radio", "Gastos")) if st.session_state.get("tipo_radio") in _tipo_opts else 0
+    tipo = st.radio("Tipo", _tipo_opts, index=_tipo_idx)
+    save_pref("tipo", tipo)
 
     st.markdown("### Categorias")
     cats = sorted(df["categoria"].unique())
@@ -373,6 +411,7 @@ with st.sidebar:
         st.session_state.cat_state[c] = checked
         if checked:
             cats_sel.append(c)
+    save_pref("cat_state", json.dumps({k: v for k, v in st.session_state.cat_state.items()}))
     st.divider()
     if st.button("🗑 Apagar todos os dados"):
         get_supabase().table("transacoes").delete().neq("id", 0).execute()
