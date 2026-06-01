@@ -645,18 +645,21 @@ with tab3:
     else:
         por_mes_cat = (dff.groupby(["mes","categoria"])["valor_abs"]
                        .sum().reset_index().sort_values("mes"))
-        # order categories by mean across months — largest at bottom of stack
+        meses_u = sorted(por_mes_cat["mes"].unique())
+        # largest mean at bottom = added first
         cat_order = (por_mes_cat.groupby("categoria")["valor_abs"]
-                     .mean().sort_values(ascending=True).index.tolist())
-        fig_ev = px.bar(por_mes_cat, x="mes", y="valor_abs", color="categoria",
-                        barmode="stack", color_discrete_sequence=get_colors(),
-                        category_orders={"categoria": cat_order},
-                        labels={"valor_abs":"R$","mes":"","categoria":""})
+                     .mean().sort_values(ascending=False).index.tolist())
+        colors = get_colors()
+        fig_ev = go.Figure()
+        for i, cat in enumerate(cat_order):
+            sub = (por_mes_cat[por_mes_cat["categoria"] == cat]
+                   .set_index("mes").reindex(meses_u, fill_value=0).reset_index())
+            fig_ev.add_bar(x=sub["mes"], y=sub["valor_abs"], name=cat,
+                           marker_color=colors[i % len(colors)],
+                           hovertemplate=f"<b>%{{x}}</b><br>{cat}<br>R$ %{{y:,.2f}}<extra></extra>")
         fig_ev.update_layout(**build_plotly_theme(), height=420, bargap=0.25,
-                             legend=dict(orientation="h", yanchor="bottom", y=1.02,
-                                         font=dict(size=11)))
-        fig_ev.update_traces(
-            hovertemplate="<b>%{x}</b><br>%{data.name}<br>R$ %{y:,.2f}<extra></extra>")
+                             barmode="stack",
+                             legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=11)))
         st.plotly_chart(fig_ev, width='stretch')
 
 with tab4:
