@@ -221,12 +221,16 @@ def df_to_xlsx(df: pd.DataFrame) -> bytes:
         df.to_excel(writer, index=False)
     return buf.getvalue()
 
-def guess_category(desc: str) -> str:
+def guess_category(desc: str, valor: float = 0.0) -> str:
     import re
     d = desc.lower()
 
     if "pagamento de fatura" in d:
         return "Pagamento de Fatura"
+
+    # Bolsa residência: transferência recebida de Lucas Oltramari com valor próximo de 4750
+    if ("transferência recebida" in d or "transferencia recebida" in d) and        "lucas oltramari" in d and 4500 <= abs(valor) <= 5000:
+        return "Bolsa Residência"
 
     # Regex priority rules — checados antes do mapa geral
     REGEX_MAP = [
@@ -307,7 +311,7 @@ def parse_ofx(file_bytes: bytes, origem: str = "extrato") -> tuple:
         return df, saldos
     df["data"] = pd.to_datetime(df["data"])
     df["mes"] = df["data"].dt.to_period("M").astype(str)
-    df["categoria"] = df["descricao"].apply(guess_category)
+    df["categoria"] = df.apply(lambda r: guess_category(r["descricao"], r["valor"]), axis=1)
     return df, saldos
 
 def detectar_reembolsos(df: pd.DataFrame, janela_dias: int = 90) -> pd.DataFrame:
@@ -379,7 +383,7 @@ def load_from_supabase() -> pd.DataFrame:
     df = pd.DataFrame(all_rows)
     df["data"] = pd.to_datetime(df["data"])
     df["mes"] = df["data"].dt.to_period("M").astype(str)
-    df["categoria"] = df["descricao"].apply(guess_category)
+    df["categoria"] = df.apply(lambda r: guess_category(r["descricao"], r["valor"]), axis=1)
     df = detectar_reembolsos(df)
     return df
 
