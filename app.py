@@ -194,8 +194,8 @@ def fmt_brl(val: float) -> str:
     return f"R$ {abs(val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def fmt_brl_signed(val: float) -> str:
-    sign = "+" if val > 0 else "-" if val < 0 else ""
-    return f"{sign} R$ {abs(val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    sign = "- " if val < 0 else ""
+    return f"{sign}R$ {abs(val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def df_to_xlsx(df: pd.DataFrame) -> bytes:
     buf = io.BytesIO()
@@ -806,7 +806,7 @@ with tab4:
     show_raw = dff[["data","descricao","categoria","valor","origem"]].copy()
     show_raw = show_raw.sort_values("data", ascending=False).reset_index(drop=True)
     show = show_raw.copy()
-    show["valor"] = show["valor"].map(lambda v: f"{'+' if v > 0 else ''}{fmt_brl_signed(v)}")
+    show["valor"] = show["valor"].map(lambda v: fmt_brl_signed(v))
     show.columns = ["Data","Descrição","Categoria","Valor","Origem"]
     st.dataframe(show, width='stretch', height=480)
     st.download_button("⬇ baixar transações (.xlsx)",
