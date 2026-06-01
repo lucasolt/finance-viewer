@@ -620,10 +620,13 @@ with tab3:
         gas_cat["valor_abs"] = gas_cat["valor"].abs()
         rec_cat = (dff[dff["valor"] > 0].groupby(["mes","categoria"])["valor"]
                    .sum().reset_index().sort_values("mes"))
+        # order gastos categories by mean — largest at bottom
+        gas_order = (gas_cat.groupby("categoria")["valor_abs"]
+                     .mean().sort_values(ascending=True).index.tolist())
         colors = get_colors()
         fig_ev = go.Figure()
-        # gastos (negative stack)
-        for i, cat in enumerate(gas_cat["categoria"].unique()):
+        # gastos (negative stack) — largest mean at bottom = first added
+        for i, cat in enumerate(gas_order):
             sub = gas_cat[gas_cat["categoria"] == cat]
             fig_ev.add_bar(x=sub["mes"], y=-sub["valor_abs"], name=f"↓ {cat}",
                            marker_color=colors[i % len(colors)], opacity=0.85,
@@ -642,8 +645,15 @@ with tab3:
     else:
         por_mes_cat = (dff.groupby(["mes","categoria"])["valor_abs"]
                        .sum().reset_index().sort_values("mes"))
+        # order categories by mean across months — largest at bottom of stack
+        cat_order = (por_mes_cat.groupby("categoria")["valor_abs"]
+                     .mean().sort_values(ascending=False).index.tolist())
+        por_mes_cat["categoria"] = pd.Categorical(por_mes_cat["categoria"],
+                                                   categories=cat_order[::-1], ordered=True)
+        por_mes_cat = por_mes_cat.sort_values(["mes","categoria"])
         fig_ev = px.bar(por_mes_cat, x="mes", y="valor_abs", color="categoria",
                         barmode="stack", color_discrete_sequence=get_colors(),
+                        category_orders={"categoria": cat_order[::-1]},
                         labels={"valor_abs":"R$","mes":"","categoria":""})
         fig_ev.update_layout(**build_plotly_theme(), height=420, bargap=0.25,
                              legend=dict(orientation="h", yanchor="bottom", y=1.02,
