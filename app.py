@@ -192,8 +192,11 @@ CATEGORY_MAP = {
 def fmt_brl(val: float) -> str:
     return f"R$ {abs(val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-def df_to_csv(df: pd.DataFrame) -> bytes:
-    return df.to_csv(index=False, decimal=",", sep=";").encode("utf-8-sig")
+def df_to_xlsx(df: pd.DataFrame) -> bytes:
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False)
+    return buf.getvalue()
 
 def guess_category(desc: str) -> str:
     import re
@@ -527,7 +530,7 @@ with tab1:
                           legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=11)))
         st.plotly_chart(fig, width='stretch')
         _tbl = pd.DataFrame({"Mês": meses_u, "Receitas": rec_mes.values, "Gastos": gas_mes.abs().values, "Saldo": sal_mes.values})
-        st.download_button("⬇ baixar tabela (csv)", df_to_csv(_tbl), "por_mes.csv", "text/csv", use_container_width=True)
+        st.download_button("⬇ baixar tabela (.xlsx)", df_to_xlsx(_tbl), "por_mes.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
     else:
         por_mes = (dff.groupby("mes")["valor_abs"].sum().reset_index().sort_values("mes"))
         fig = go.Figure()
@@ -537,7 +540,7 @@ with tab1:
         fig.update_layout(**build_plotly_theme(), height=380, bargap=0.3,
                           xaxis_title=None, yaxis_title="R$", showlegend=False)
         st.plotly_chart(fig, width='stretch')
-        st.download_button("⬇ baixar tabela (csv)", df_to_csv(por_mes.rename(columns={"mes":"Mês","valor_abs":"Valor"})), "por_mes.csv", "text/csv", use_container_width=True)
+        st.download_button("⬇ baixar tabela (.xlsx)", df_to_xlsx(por_mes.rename(columns={"mes":"Mês","valor_abs":"Valor"})), "por_mes.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
         media = por_mes["valor_abs"].mean()
         st.markdown(f"<p style='color:#555;font-size:0.8rem;font-family:DM Mono,monospace;'>média mensal: <span style='color:{get_accent()}'>{fmt_brl(media)}</span></p>",
                     unsafe_allow_html=True)
@@ -638,6 +641,6 @@ with tab4:
     show["valor"] = show["valor"].map(lambda v: f"{'+' if v > 0 else ''}{fmt_brl(v)}")
     show.columns = ["Data","Descrição","Categoria","Valor","Origem"]
     st.dataframe(show, width='stretch', height=480)
-    st.download_button("⬇ baixar transações (csv)",
-                       df_to_csv(show_raw.rename(columns={"data":"Data","descricao":"Descrição","categoria":"Categoria","valor":"Valor","origem":"Origem"})),
-                       "transacoes.csv", "text/csv", use_container_width=True)
+    st.download_button("⬇ baixar transações (.xlsx)",
+                       df_to_xlsx(show_raw.rename(columns={"data":"Data","descricao":"Descrição","categoria":"Categoria","valor":"Valor","origem":"Origem"})),
+                       "transacoes.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
