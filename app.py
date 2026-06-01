@@ -523,10 +523,10 @@ with tab2:
     elif tipo == "Tudo":
         # Side-by-side: receitas vs gastos por categoria
         rec_cat = dff[dff["valor"] > 0].groupby("categoria")["valor"].sum().rename("Receita")
-        gas_cat = dff[dff["valor"] < 0].groupby("categoria")["valor"].abs().rename("Gasto")
+        gas_cat = dff[dff["valor"] < 0].groupby("categoria")["valor"].sum().abs().rename("Gasto")
         por_cat_tudo = pd.concat([rec_cat, gas_cat], axis=1).fillna(0)
         por_cat_tudo.index.name = "categoria"
-        por_cat_tudo = por_cat_tudo.reset_index()
+        por_cat_tudo = por_cat_tudo.reset_index().rename(columns={0: "categoria"}) if "categoria" not in por_cat_tudo.reset_index().columns else por_cat_tudo.reset_index()
         por_cat_tudo = por_cat_tudo.sort_values("Gasto", ascending=False)
         colors = get_colors()
         fig_bar = go.Figure()
