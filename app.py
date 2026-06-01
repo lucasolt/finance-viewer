@@ -492,8 +492,11 @@ with st.sidebar:
     _max_date = df["data"].max().date()
 
     # Dropdown de presets
-    PRESET_OPTS = ["Tudo", "Últimos 12 meses", "Este ano (YTD)", "Este mês", "Personalizado"]
+    PRESET_OPTS = ["Tudo", "Últimos 12 meses", "Este ano (YTD)", "Este mês", "Personalizado", "Barra deslizante"]
     preset = st.selectbox("Período", PRESET_OPTS, index=0, key="date_preset")
+
+    # lista de meses disponíveis (pro slider)
+    _meses_disp = sorted(df["mes"].unique())
 
     # Calcula o range com base no preset
     if preset == "Tudo":
@@ -511,6 +514,16 @@ with st.sidebar:
     elif preset == "Este mês":
         d_start = max(datetime.date(_max_date.year, _max_date.month, 1), _min_date)
         d_end = _max_date
+    elif preset == "Barra deslizante":
+        # O range vem do slider renderizado abaixo do gráfico.
+        # Lê do session_state; default = range completo.
+        _sel = st.session_state.get("range_slider", (_meses_disp[0], _meses_disp[-1]))
+        _m_ini, _m_fim = _sel[0], _sel[-1]
+        d_start = pd.Period(_m_ini, freq="M").start_time.date()
+        d_end = pd.Period(_m_fim, freq="M").end_time.date()
+        d_start = max(d_start, _min_date)
+        d_end = min(d_end, _max_date)
+        st.caption("↓ use a barra abaixo do gráfico")
     else:  # Personalizado — dois date inputs separados
         c_ini, c_fim = st.columns(2)
         d_start = c_ini.date_input("De", value=_min_date,
@@ -784,6 +797,15 @@ with tab3:
                              barmode="stack",
                              legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=11)))
         st.plotly_chart(fig_ev, width='stretch')
+
+# ── Barra deslizante de período (quando ativada no dropdown) ───────────────────
+if preset == "Barra deslizante" and len(_meses_disp) > 1:
+    st.select_slider(
+        "Arraste para definir o período",
+        options=_meses_disp,
+        value=st.session_state.get("range_slider", (_meses_disp[0], _meses_disp[-1])),
+        key="range_slider",
+    )
 
 # ── Networth ──────────────────────────────────────────────────────────────────
 st.divider()
