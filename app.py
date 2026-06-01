@@ -652,8 +652,11 @@ with tab3:
         colors = get_colors()
         fig_ev = go.Figure()
         for i, cat in enumerate(cat_order):
-            sub = (por_mes_cat[por_mes_cat["categoria"] == cat]
-                   .set_index("mes").reindex(meses_u, fill_value=0).reset_index())
+            sub = por_mes_cat[por_mes_cat["categoria"] == cat]
+            # fill missing months with 0
+            sub = (pd.DataFrame({"mes": meses_u})
+                   .merge(sub[["mes","valor_abs"]], on="mes", how="left")
+                   .fillna(0))
             fig_ev.add_bar(x=sub["mes"], y=sub["valor_abs"], name=cat,
                            marker_color=colors[i % len(colors)],
                            hovertemplate=f"<b>%{{x}}</b><br>{cat}<br>R$ %{{y:,.2f}}<extra></extra>")
