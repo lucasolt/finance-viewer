@@ -3,3 +3,4 @@ pandas>=2.0.0
 plotly>=5.20.0
 ofxparse>=0.21
 supabase>=2.0.0
+openpyxl
