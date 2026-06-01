@@ -449,10 +449,10 @@ st.divider()
 tab1, tab2, tab3, tab4 = st.tabs(["Por mês", "Por categoria", "Evolução", "Transações"])
 
 with tab1:
-    por_mes = (dff[dff["valor"] < 0].groupby("mes")["valor_abs"]
+    por_mes = (dff.groupby("mes")["valor_abs"]
                .sum().reset_index().sort_values("mes"))
     if por_mes.empty:
-        st.info("Nenhum gasto no período.")
+        st.info("Nenhum dado no período.")
     else:
         fig = go.Figure()
         fig.add_bar(x=por_mes["mes"], y=por_mes["valor_abs"],
@@ -466,10 +466,10 @@ with tab1:
                     unsafe_allow_html=True)
 
 with tab2:
-    por_cat = (dff[dff["valor"] < 0].groupby("categoria")["valor_abs"]
+    por_cat = (dff.groupby("categoria")["valor_abs"]
                .sum().reset_index().sort_values("valor_abs", ascending=False))
     if por_cat.empty:
-        st.info("Nenhum gasto no período.")
+        st.info("Nenhum dado no período.")
     else:
         col_a, col_b = st.columns(2)
         with col_a:
@@ -490,10 +490,10 @@ with tab2:
             st.plotly_chart(fig_pie, use_container_width=True)
 
 with tab3:
-    por_mes_cat = (dff[dff["valor"] < 0].groupby(["mes","categoria"])["valor_abs"]
+    por_mes_cat = (dff.groupby(["mes","categoria"])["valor_abs"]
                    .sum().reset_index().sort_values("mes"))
     if por_mes_cat.empty:
-        st.info("Nenhum gasto no período.")
+        st.info("Nenhum dado no período.")
     else:
         fig_ev = px.bar(por_mes_cat, x="mes", y="valor_abs", color="categoria",
                         barmode="stack", color_discrete_sequence=get_colors(),
