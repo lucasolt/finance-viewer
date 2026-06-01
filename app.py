@@ -377,21 +377,43 @@ with st.sidebar:
     save_pref("color_scheme", scheme)
     st.divider()
     st.markdown("### Filtros")
-    # Ano
-    anos = sorted(df["data"].dt.year.unique())
-    _ano_default_idx = 0
-    if "ano_sel" in st.session_state:
-        _opts = ["Todos"] + [str(a) for a in anos]
-        _ano_default_idx = _opts.index(st.session_state["ano_sel"]) if st.session_state["ano_sel"] in _opts else 0
-    ano_sel = st.selectbox("Ano", ["Todos"] + [str(a) for a in anos], index=_ano_default_idx, key="ano_sel_w")
-    save_pref("ano_sel", ano_sel)
-    # Range de meses
-    MONTH_NAMES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
-    _m_default = st.session_state.get("m_range", (1, 12))
-    m_range = st.select_slider("Período", options=list(range(1, 13)),
-                               format_func=lambda x: MONTH_NAMES[x-1],
-                               value=_m_default, key="m_range")
-    save_pref("m_range", str(list(m_range)))
+    import datetime
+    _min_date = df["data"].min().date()
+    _max_date = df["data"].max().date()
+    # load saved range if available
+    _saved_range = st.session_state.get("date_range", None)
+    if _saved_range and isinstance(_saved_range, (list, tuple)) and len(_saved_range) == 2:
+        try:
+            _default_range = (datetime.date.fromisoformat(str(_saved_range[0])),
+                              datetime.date.fromisoformat(str(_saved_range[1])))
+        except:
+            _default_range = (_min_date, _max_date)
+    else:
+        _default_range = (_min_date, _max_date)
+    date_range = st.date_input("Período", value=_default_range,
+                               min_value=_min_date, max_value=_max_date,
+                               key="date_range_input")
+    # quick shortcuts
+    _qcols = st.columns(3)
+    if _qcols[0].button("12m", use_container_width=True):
+        _end = _max_date
+        _start = _end.replace(year=_end.year - 1)
+        st.session_state["date_range_input"] = (_start, _end)
+        st.rerun()
+    if _qcols[1].button("YTD", use_container_width=True):
+        st.session_state["date_range_input"] = (datetime.date(_max_date.year, 1, 1), _max_date)
+        st.rerun()
+    if _qcols[2].button("Tudo", use_container_width=True):
+        st.session_state["date_range_input"] = (_min_date, _max_date)
+        st.rerun()
+    # handle partial selection (user picked only start)
+    if isinstance(date_range, (list, tuple)) and len(date_range) == 2:
+        d_start, d_end = date_range[0], date_range[1]
+    elif isinstance(date_range, (list, tuple)) and len(date_range) == 1:
+        d_start, d_end = date_range[0], _max_date
+    else:
+        d_start, d_end = _min_date, _max_date
+    save_pref("date_range", str([str(d_start), str(d_end)]))
     _tipo_opts = ["Gastos", "Receitas", "Tudo"]
     _tipo_idx = _tipo_opts.index(st.session_state.get("tipo_radio", "Gastos")) if st.session_state.get("tipo_radio") in _tipo_opts else 0
     tipo = st.radio("Tipo", _tipo_opts, index=_tipo_idx)
@@ -452,11 +474,8 @@ with st.sidebar:
         st.rerun()
 
 # ── Filter ────────────────────────────────────────────────────────────────────
-# apply date filter
-if ano_sel == "Todos":
-    mask_data = (df["data"].dt.month >= m_range[0]) & (df["data"].dt.month <= m_range[1])
-else:
-    mask_data = (df["data"].dt.year == int(ano_sel)) &                 (df["data"].dt.month >= m_range[0]) & (df["data"].dt.month <= m_range[1])
+import datetime as _dt
+mask_data = (df["data"].dt.date >= d_start) & (df["data"].dt.date <= d_end)
 dff = df[mask_data & df["categoria"].isin(cats_sel)].copy()
 if tipo == "Gastos":
     dff = dff[dff["valor"] < 0]
