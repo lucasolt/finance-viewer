@@ -17,13 +17,19 @@ st.markdown("""
 html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; }
 
 /* Slider neutro */
-[data-baseweb="slider"] [data-testid="stThumbValue"],
 [data-baseweb="slider"] [role="slider"] {
     background-color: #555 !important;
     border-color: #555 !important;
+    box-shadow: none !important;
 }
-[data-baseweb="slider"] [data-testid="stSliderTrackFill"] {
+[data-baseweb="slider"] div[class*="Track"] > div:nth-child(2) {
     background-color: #444 !important;
+}
+[data-baseweb="slider"] div[class*="InnerTrack"] {
+    background-color: #444 !important;
+}
+div[data-testid="stSlider"] div[class*="track"] {
+    background: #444 !important;
 }
 .stApp { background-color: #0f0f0f; color: #e8e8e0; }
 header[data-testid="stHeader"] { background: transparent; }
