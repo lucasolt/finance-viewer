@@ -479,11 +479,33 @@ st.divider()
 tab1, tab2, tab3, tab4 = st.tabs(["Por mês", "Por categoria", "Evolução", "Transações"])
 
 with tab1:
-    por_mes = (dff.groupby("mes")["valor_abs"]
-               .sum().reset_index().sort_values("mes"))
-    if por_mes.empty:
+    if dff.empty:
         st.info("Nenhum dado no período.")
+    elif tipo == "Tudo":
+        # Diverging chart: receitas acima, gastos abaixo, saldo como linha
+        meses_u = sorted(dff["mes"].unique())
+        rec_mes = dff[dff["valor"] > 0].groupby("mes")["valor"].sum().reindex(meses_u, fill_value=0)
+        gas_mes = dff[dff["valor"] < 0].groupby("mes")["valor"].sum().reindex(meses_u, fill_value=0)
+        sal_mes = (rec_mes + gas_mes)
+        colors = get_colors()
+        fig = go.Figure()
+        fig.add_bar(x=meses_u, y=rec_mes.values, name="Receitas",
+                    marker_color=colors[0], marker_line_width=0,
+                    hovertemplate="<b>%{x}</b><br>Receita: R$ %{y:,.2f}<extra></extra>")
+        fig.add_bar(x=meses_u, y=gas_mes.values, name="Gastos",
+                    marker_color=colors[2], marker_line_width=0,
+                    hovertemplate="<b>%{x}</b><br>Gasto: R$ %{y:,.2f}<extra></extra>")
+        fig.add_scatter(x=meses_u, y=sal_mes.values, name="Saldo",
+                        mode="lines+markers", line=dict(color=colors[1], width=2),
+                        marker=dict(size=6),
+                        hovertemplate="<b>%{x}</b><br>Saldo: R$ %{y:,.2f}<extra></extra>")
+        fig.add_hline(y=0, line_color="#333", line_width=1)
+        fig.update_layout(**build_plotly_theme(), height=420, bargap=0.25, barmode="relative",
+                          xaxis_title=None, yaxis_title="R$",
+                          legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=11)))
+        st.plotly_chart(fig, use_container_width=True)
     else:
+        por_mes = (dff.groupby("mes")["valor_abs"].sum().reset_index().sort_values("mes"))
         fig = go.Figure()
         fig.add_bar(x=por_mes["mes"], y=por_mes["valor_abs"],
                     marker_color=get_accent(), marker_line_width=0,
@@ -492,15 +514,33 @@ with tab1:
                           xaxis_title=None, yaxis_title="R$", showlegend=False)
         st.plotly_chart(fig, use_container_width=True)
         media = por_mes["valor_abs"].mean()
-        st.markdown(f"<p style='color:#555;font-size:0.8rem;font-family:DM Mono,monospace;'>média mensal: <span style='color:#c8f060'>{fmt_brl(media)}</span></p>",
+        st.markdown(f"<p style='color:#555;font-size:0.8rem;font-family:DM Mono,monospace;'>média mensal: <span style='color:{get_accent()}'>{fmt_brl(media)}</span></p>",
                     unsafe_allow_html=True)
 
 with tab2:
-    por_cat = (dff.groupby("categoria")["valor_abs"]
-               .sum().reset_index().sort_values("valor_abs", ascending=False))
-    if por_cat.empty:
+    if dff.empty:
         st.info("Nenhum dado no período.")
+    elif tipo == "Tudo":
+        # Side-by-side: receitas vs gastos por categoria
+        rec_cat = dff[dff["valor"] > 0].groupby("categoria")["valor"].sum().rename("Receita")
+        gas_cat = dff[dff["valor"] < 0].groupby("categoria")["valor"].apply(abs).rename("Gasto")
+        por_cat_tudo = pd.concat([rec_cat, gas_cat], axis=1).fillna(0).reset_index()
+        por_cat_tudo = por_cat_tudo.sort_values("Gasto", ascending=False)
+        colors = get_colors()
+        fig_bar = go.Figure()
+        fig_bar.add_bar(y=por_cat_tudo["categoria"], x=por_cat_tudo["Gasto"],
+                        name="Gastos", orientation="h", marker_color=colors[2],
+                        hovertemplate="<b>%{y}</b><br>Gasto: R$ %{x:,.2f}<extra></extra>")
+        fig_bar.add_bar(y=por_cat_tudo["categoria"], x=por_cat_tudo["Receita"],
+                        name="Receitas", orientation="h", marker_color=colors[0],
+                        hovertemplate="<b>%{y}</b><br>Receita: R$ %{x:,.2f}<extra></extra>")
+        fig_bar.update_layout(**build_plotly_theme(), height=420, barmode="group",
+                              xaxis_title="R$", yaxis_title=None,
+                              legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=11)))
+        st.plotly_chart(fig_bar, use_container_width=True)
     else:
+        por_cat = (dff.groupby("categoria")["valor_abs"]
+                   .sum().reset_index().sort_values("valor_abs", ascending=False))
         col_a, col_b = st.columns(2)
         with col_a:
             fig_bar = go.Figure()
@@ -520,11 +560,40 @@ with tab2:
             st.plotly_chart(fig_pie, use_container_width=True)
 
 with tab3:
-    por_mes_cat = (dff.groupby(["mes","categoria"])["valor_abs"]
-                   .sum().reset_index().sort_values("mes"))
-    if por_mes_cat.empty:
+    if dff.empty:
         st.info("Nenhum dado no período.")
+    elif tipo == "Tudo":
+        meses_u = sorted(dff["mes"].unique())
+        rec_mes = dff[dff["valor"] > 0].groupby("mes")["valor"].sum().reindex(meses_u, fill_value=0)
+        gas_mes = dff[dff["valor"] < 0].groupby("categoria")
+        # stacked gastos abaixo, stacked receitas acima
+        gas_cat = (dff[dff["valor"] < 0].groupby(["mes","categoria"])["valor"]
+                   .sum().reset_index().sort_values("mes"))
+        gas_cat["valor_abs"] = gas_cat["valor"].abs()
+        rec_cat = (dff[dff["valor"] > 0].groupby(["mes","categoria"])["valor"]
+                   .sum().reset_index().sort_values("mes"))
+        colors = get_colors()
+        fig_ev = go.Figure()
+        # gastos (negative stack)
+        for i, cat in enumerate(gas_cat["categoria"].unique()):
+            sub = gas_cat[gas_cat["categoria"] == cat]
+            fig_ev.add_bar(x=sub["mes"], y=-sub["valor_abs"], name=f"↓ {cat}",
+                           marker_color=colors[i % len(colors)], opacity=0.85,
+                           hovertemplate=f"<b>%{{x}}</b><br>{cat}<br>R$ %{{customdata:,.2f}}<extra></extra>",
+                           customdata=sub["valor_abs"])
+        # receitas (positive stack)
+        for i, cat in enumerate(rec_cat["categoria"].unique()):
+            sub = rec_cat[rec_cat["categoria"] == cat]
+            fig_ev.add_bar(x=sub["mes"], y=sub["valor"], name=f"↑ {cat}",
+                           marker_color=colors[(i + 4) % len(colors)], opacity=0.6,
+                           hovertemplate=f"<b>%{{x}}</b><br>{cat}<br>R$ %{{y:,.2f}}<extra></extra>")
+        fig_ev.add_hline(y=0, line_color="#444", line_width=1)
+        fig_ev.update_layout(**build_plotly_theme(), height=460, bargap=0.2, barmode="relative",
+                             legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=10)))
+        st.plotly_chart(fig_ev, use_container_width=True)
     else:
+        por_mes_cat = (dff.groupby(["mes","categoria"])["valor_abs"]
+                       .sum().reset_index().sort_values("mes"))
         fig_ev = px.bar(por_mes_cat, x="mes", y="valor_abs", color="categoria",
                         barmode="stack", color_discrete_sequence=get_colors(),
                         labels={"valor_abs":"R$","mes":"","categoria":""})
