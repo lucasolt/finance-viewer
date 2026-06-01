@@ -65,9 +65,9 @@ def build_plotly_theme() -> dict:
     )
 
 CATEGORY_MAP = {
-    # Alimentação — iFood
-    "ifd*": "Alimentação",
-    "ifood": "Alimentação",
+    # iFood
+    "ifd*": "iFood",
+    "ifood": "iFood",
     # Alimentação — estabelecimentos
     "zaffari": "Alimentação",
     "companhiazaffari": "Alimentação",
