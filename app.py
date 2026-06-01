@@ -207,25 +207,18 @@ def guess_category(desc: str) -> str:
     if "pagamento de fatura" in d:
         return "Pagamento de Fatura"
 
-    # Prefixos — checados antes do mapa geral
-    PREFIX_MAP = [
-        ("ifd*",    "iFood"),
-        ("ifood",   "iFood"),
-        ("uber* ",  "Transporte"),
-        ("uber uber", "Transporte"),
-        ("dm *",    "Streaming"),
+    # Regex priority rules — checados antes do mapa geral
+    REGEX_MAP = [
+        (r"^ifd\*",           "iFood"),
+        (r"ifood",            "iFood"),
+        (r"\buber\b",         "Transporte"),
+        (r"^dm \*",           "Streaming"),
+        (r"\*spotify",        "Streaming"),
+        (r"\*appgas",         "Casa"),
+        (r"^pagamento recebido$", "Crédito de Fatura"),
     ]
-    for prefix, cat in PREFIX_MAP:
-        if d.startswith(prefix) or prefix in d[:20]:
-            return cat
-
-    # Sufixos
-    SUFFIX_MAP = [
-        ("*spotify", "Streaming"),
-        ("*appgas",  "Casa"),
-    ]
-    for suffix, cat in SUFFIX_MAP:
-        if d.endswith(suffix) or suffix in d:
+    for pattern, cat in REGEX_MAP:
+        if re.search(pattern, d):
             return cat
 
     # Keyword map — longer keywords checked first to avoid partial matches
