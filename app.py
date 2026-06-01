@@ -351,6 +351,8 @@ if not st.session_state.authed:
     st.stop()
 
 # ── Load data + prefs ────────────────────────────────────────────────────────
+if "upload_key" not in st.session_state:
+    st.session_state.upload_key = 0
 df = load_from_supabase()
 df_saldos = load_saldos()
 prefs = load_prefs()
@@ -395,6 +397,7 @@ def process_upload(files, origem: str):
             save_to_supabase(new_df)
             for data, balamt in all_saldos.items():
                 save_saldo(data, balamt, origem)
+        st.session_state.upload_key += 1
         st.success(f"{len(new_df)} transações ({origem}) salvas." +
                    (f" {len(all_saldos)} saldo(s) registrado(s)." if all_saldos else ""))
     for e in errors:
@@ -403,7 +406,7 @@ def process_upload(files, origem: str):
 with col_up1:
     st.markdown("<p style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:0.08em;'>Extrato da conta</p>", unsafe_allow_html=True)
     up_extrato = st.file_uploader("extrato", type=["ofx"], accept_multiple_files=True,
-                                   label_visibility="collapsed", key="up_extrato")
+                                   label_visibility="collapsed", key=f"up_extrato_{st.session_state.upload_key}")
     if up_extrato:
         process_upload(up_extrato, "extrato")
         df = load_from_supabase()
@@ -411,7 +414,7 @@ with col_up1:
 with col_up2:
     st.markdown("<p style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:0.08em;'>Fatura do cartão</p>", unsafe_allow_html=True)
     up_fatura = st.file_uploader("fatura", type=["ofx"], accept_multiple_files=True,
-                                  label_visibility="collapsed", key="up_fatura")
+                                  label_visibility="collapsed", key=f"up_fatura_{st.session_state.upload_key}")
     if up_fatura:
         process_upload(up_fatura, "fatura")
         df = load_from_supabase()
