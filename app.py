@@ -184,6 +184,7 @@ CATEGORY_MAP = {
     "ipva": "Impostos",
     # Pagamento de Fatura
     "pagamento de fatura": "Pagamento de Fatura",
+    "pagamento recebido": "Crédito de Fatura",
     # Transferência Pessoal (pessoas físicas — fallback via lógica abaixo)
 }
 
@@ -259,6 +260,7 @@ def save_to_supabase(df: pd.DataFrame):
             "valor": float(r["valor"]),
             "categoria": r["categoria"],
             "mes": r["mes"],
+            "origem": r["origem"] if "origem" in r.index else "extrato",
         })
     # upsert ignores duplicates via UNIQUE constraint
     sb.table("transacoes").upsert(rows, on_conflict="data,descricao,valor").execute()
@@ -318,32 +320,43 @@ st.markdown("<p class='upload-hint'>upload de extratos OFX — pode enviar vári
 st.divider()
 
 # ── Upload ────────────────────────────────────────────────────────────────────
-uploaded = st.file_uploader(
-    "OFX", type=["ofx"], accept_multiple_files=True, label_visibility="collapsed"
-)
+col_up1, col_up2 = st.columns(2)
 
-if uploaded:
-    frames = []
-    errors = []
-    for f in uploaded:
+def process_upload(files, origem: str):
+    frames, errors = [], []
+    for f in files:
         try:
             parsed = parse_ofx(f.read())
             if not parsed.empty:
+                parsed["origem"] = origem
                 frames.append(parsed)
         except Exception as e:
             errors.append(f"{f.name}: {e}")
-
     if frames:
         new_df = pd.concat(frames, ignore_index=True).drop_duplicates(
-            subset=["data", "descricao", "valor"]
+            subset=["data", "descricao", "valor", "origem"]
         )
         with st.spinner("salvando no banco..."):
             save_to_supabase(new_df)
-        df = load_from_supabase()
-        st.success(f"{len(new_df)} transações processadas.")
-
+        st.success(f"{len(new_df)} transações ({origem}) salvas.")
     for e in errors:
         st.error(e)
+
+with col_up1:
+    st.markdown("<p style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:0.08em;'>Extrato da conta</p>", unsafe_allow_html=True)
+    up_extrato = st.file_uploader("extrato", type=["ofx"], accept_multiple_files=True,
+                                   label_visibility="collapsed", key="up_extrato")
+    if up_extrato:
+        process_upload(up_extrato, "extrato")
+        df = load_from_supabase()
+
+with col_up2:
+    st.markdown("<p style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:0.08em;'>Fatura do cartão</p>", unsafe_allow_html=True)
+    up_fatura = st.file_uploader("fatura", type=["ofx"], accept_multiple_files=True,
+                                  label_visibility="collapsed", key="up_fatura")
+    if up_fatura:
+        process_upload(up_fatura, "fatura")
+        df = load_from_supabase()
 
 if df.empty:
     st.markdown("""
@@ -386,7 +399,7 @@ with st.sidebar:
 
     st.markdown("### Categorias")
     cats = sorted(df["categoria"].unique())
-    EXCLUDED_BY_DEFAULT = {"Pagamento de Fatura", "Transferência Pessoal", "Investimento"}
+    EXCLUDED_BY_DEFAULT = {"Pagamento de Fatura", "Crédito de Fatura", "Transferência Pessoal", "Investimento"}
 
     # Inicializa estado das categorias na primeira vez ou para categorias novas
     if "cat_state" not in st.session_state:
