@@ -229,13 +229,22 @@ def get_supabase():
 @st.cache_data(ttl=60)
 def load_from_supabase() -> pd.DataFrame:
     sb = get_supabase()
-    res = sb.table("transacoes").select("*").execute()
-    if not res.data:
+    all_rows = []
+    page_size = 1000
+    offset = 0
+    while True:
+        res = sb.table("transacoes").select("*").range(offset, offset + page_size - 1).execute()
+        if not res.data:
+            break
+        all_rows.extend(res.data)
+        if len(res.data) < page_size:
+            break
+        offset += page_size
+    if not all_rows:
         return pd.DataFrame()
-    df = pd.DataFrame(res.data)
+    df = pd.DataFrame(all_rows)
     df["data"] = pd.to_datetime(df["data"])
     df["mes"] = df["data"].dt.to_period("M").astype(str)
-    # sempre recategoriza na leitura — garante que mudanças no CATEGORY_MAP reflitam
     df["categoria"] = df["descricao"].apply(guess_category)
     return df
 
@@ -335,10 +344,35 @@ with st.sidebar:
     m_range = st.select_slider("Período", options=list(range(1, 13)),
                                format_func=lambda x: MONTH_NAMES[x-1],
                                value=(1, 12))
-    cats = sorted(df["categoria"].unique())
-    default_cats = [c for c in cats if c != "Pagamento de Fatura"]
-    cats_sel = st.multiselect("Categorias", cats, default=default_cats)
     tipo = st.radio("Tipo", ["Gastos", "Receitas", "Tudo"], index=0)
+
+    st.markdown("### Categorias")
+    cats = sorted(df["categoria"].unique())
+    EXCLUDED_BY_DEFAULT = {"Pagamento de Fatura", "Transferência Pessoal", "Investimento"}
+
+    # Inicializa estado das categorias na primeira vez ou para categorias novas
+    if "cat_state" not in st.session_state:
+        st.session_state.cat_state = {}
+    for c in cats:
+        if c not in st.session_state.cat_state:
+            st.session_state.cat_state[c] = c not in EXCLUDED_BY_DEFAULT
+
+    col_a, col_b = st.columns(2)
+    if col_a.button("✓ Tudo", use_container_width=True):
+        for c in cats:
+            st.session_state.cat_state[c] = True
+        st.rerun()
+    if col_b.button("✗ Nada", use_container_width=True):
+        for c in cats:
+            st.session_state.cat_state[c] = False
+        st.rerun()
+
+    cats_sel = []
+    for c in cats:
+        checked = st.checkbox(c, value=st.session_state.cat_state[c], key=f"cat_{c}")
+        st.session_state.cat_state[c] = checked
+        if checked:
+            cats_sel.append(c)
     st.divider()
     if st.button("🗑 Apagar todos os dados"):
         get_supabase().table("transacoes").delete().neq("id", 0).execute()
