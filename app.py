@@ -98,7 +98,6 @@ CATEGORY_MAP = {
     "99": "Transporte",
     "cabify": "Transporte",
     "shell": "Transporte",
-    "ipiranga": "Transporte",
     "posto": "Transporte",
     "estacionamento": "Transporte",
     "onibus": "Transporte",
