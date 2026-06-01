@@ -526,7 +526,9 @@ with st.sidebar:
         col_c, col_d = st.columns(2)
         if col_c.button("✓ Sim", width='stretch'):
             get_supabase().table("transacoes").delete().neq("id", 0).execute()
+            get_supabase().table("saldos").delete().neq("id", 0).execute()
             load_from_supabase.clear()
+            load_saldos.clear()
             st.session_state.confirm_delete = False
             st.rerun()
         if col_d.button("✗ Não", width='stretch'):
