@@ -66,8 +66,6 @@ def build_plotly_theme() -> dict:
 
 CATEGORY_MAP = {
     # iFood
-    "ifd*": "iFood",
-    "ifood": "iFood",
     # Alimentação — estabelecimentos
     "zaffari": "Alimentação",
     "companhiazaffari": "Alimentação",
@@ -87,9 +85,6 @@ CATEGORY_MAP = {
     "pizza": "Alimentação",
     "pão de açúcar": "Alimentação",
     # Transporte
-    "uber* trip": "Transporte",
-    "uber uber *trip": "Transporte",
-    "uber": "Transporte",
     "99": "Transporte",
     "cabify": "Transporte",
     "shell": "Transporte",
@@ -118,8 +113,6 @@ CATEGORY_MAP = {
     "clinica": "Saúde",
     "academia": "Saúde",
     # Streaming
-    "dm *spotify": "Streaming",
-    "spotify": "Streaming",
     "netflix": "Streaming",
     "amazon prime": "Streaming",
     "hbo": "Streaming",
@@ -162,8 +155,6 @@ CATEGORY_MAP = {
     "bar": "Lazer",
     "cerveja": "Lazer",
     # Casa
-    "mp *appgas": "Casa",
-    "appgas": "Casa",
     "aluguel": "Casa",
     "condominio": "Casa",
     "luz": "Casa",
@@ -202,8 +193,32 @@ def df_to_xlsx(df: pd.DataFrame) -> bytes:
 def guess_category(desc: str) -> str:
     import re
     d = desc.lower()
+
     if "pagamento de fatura" in d:
         return "Pagamento de Fatura"
+
+    # Prefixos — checados antes do mapa geral
+    PREFIX_MAP = [
+        ("ifd*",    "iFood"),
+        ("ifood",   "iFood"),
+        ("uber* ",  "Transporte"),
+        ("uber uber", "Transporte"),
+        ("dm *",    "Streaming"),
+    ]
+    for prefix, cat in PREFIX_MAP:
+        if d.startswith(prefix) or prefix in d[:20]:
+            return cat
+
+    # Sufixos
+    SUFFIX_MAP = [
+        ("*spotify", "Streaming"),
+        ("*appgas",  "Casa"),
+    ]
+    for suffix, cat in SUFFIX_MAP:
+        if d.endswith(suffix) or suffix in d:
+            return cat
+
+    # Keyword map — longer keywords checked first to avoid partial matches
     for kw, cat in sorted(CATEGORY_MAP.items(), key=lambda x: -len(x[0])):
         if kw in d:
             return cat
