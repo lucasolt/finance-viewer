@@ -313,10 +313,12 @@ if "prefs_loaded" not in st.session_state:
         st.session_state["cat_state"] = json.loads(prefs["cat_state"])
     if "tipo" in prefs:
         st.session_state["tipo_radio"] = prefs["tipo"]
-    if "ano_sel" in prefs:
-        st.session_state["ano_sel"] = prefs["ano_sel"]
-    if "m_range" in prefs:
-        st.session_state["m_range"] = tuple(json.loads(prefs["m_range"]))
+    if "date_range" in prefs:
+        try:
+            _dr = json.loads(prefs["date_range"].replace("'", '"'))
+            st.session_state["date_range"] = [_dr[0], _dr[1]]
+        except:
+            pass
     st.session_state["prefs_loaded"] = True
 
 # ── Header ────────────────────────────────────────────────────────────────────
@@ -387,7 +389,7 @@ with st.sidebar:
     _min_date = df["data"].min().date()
     _max_date = df["data"].max().date()
     # load saved range if available
-    _saved_range = st.session_state.get("date_range", None)
+    _saved_range = st.session_state.get("date_range", None) or st.session_state.get("_dr_saved", None)
     if _saved_range and isinstance(_saved_range, (list, tuple)) and len(_saved_range) == 2:
         try:
             _default_range = (datetime.date.fromisoformat(str(_saved_range[0])),
@@ -396,22 +398,24 @@ with st.sidebar:
             _default_range = (_min_date, _max_date)
     else:
         _default_range = (_min_date, _max_date)
-    date_range = st.date_input("Período", value=_default_range,
-                               min_value=_min_date, max_value=_max_date,
-                               key="date_range_input")
-    # quick shortcuts
+    # quick shortcuts — set before widget renders
     _qcols = st.columns(3)
     if _qcols[0].button("12m", use_container_width=True):
         _end = _max_date
         _start = _end.replace(year=_end.year - 1)
-        st.session_state["date_range_input"] = (_start, _end)
+        st.session_state["_dr_override"] = (_start, _end)
         st.rerun()
     if _qcols[1].button("YTD", use_container_width=True):
-        st.session_state["date_range_input"] = (datetime.date(_max_date.year, 1, 1), _max_date)
+        st.session_state["_dr_override"] = (datetime.date(_max_date.year, 1, 1), _max_date)
         st.rerun()
     if _qcols[2].button("Tudo", use_container_width=True):
-        st.session_state["date_range_input"] = (_min_date, _max_date)
+        st.session_state["_dr_override"] = (_min_date, _max_date)
         st.rerun()
+    if "_dr_override" in st.session_state:
+        _default_range = st.session_state.pop("_dr_override")
+    date_range = st.date_input("Período", value=_default_range,
+                               min_value=_min_date, max_value=_max_date,
+                               key="date_range_input")
     # handle partial selection (user picked only start)
     if isinstance(date_range, (list, tuple)) and len(date_range) == 2:
         d_start, d_end = date_range[0], date_range[1]
