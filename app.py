@@ -228,7 +228,7 @@ def guess_category(desc: str) -> str:
         return "Transferência Pessoal"
     return "Outros"
 
-def parse_ofx(file_bytes: bytes) -> tuple:
+def parse_ofx(file_bytes: bytes, origem: str = "extrato") -> tuple:
     """Returns (transactions_df, balamt_dict) where balamt_dict = {date: amount}"""
     ofx = OfxParser.parse(io.BytesIO(file_bytes))
     rows = []
@@ -240,16 +240,17 @@ def parse_ofx(file_bytes: bytes) -> tuple:
                 "descricao": txn.memo or txn.payee or "",
                 "valor": float(txn.amount),
             })
-        # Extract BALAMT
-        try:
-            stmt = account.statement
-            if hasattr(stmt, 'balance') and stmt.balance is not None:
-                bal_date = stmt.balance_date
-                if hasattr(bal_date, 'date'):
-                    bal_date = bal_date.date()
-                saldos[str(bal_date)] = float(stmt.balance)
-        except Exception:
-            pass
+        # Extract BALAMT — só pra extrato da conta, não fatura
+        if origem == "extrato":
+            try:
+                stmt = account.statement
+                if hasattr(stmt, 'balance') and stmt.balance is not None:
+                    bal_date = stmt.balance_date
+                    if hasattr(bal_date, 'date'):
+                        bal_date = bal_date.date()
+                    saldos[str(bal_date)] = float(stmt.balance)
+            except Exception:
+                pass
     df = pd.DataFrame(rows)
     if df.empty:
         return df, saldos
@@ -379,7 +380,7 @@ def process_upload(files, origem: str):
     all_saldos = {}
     for f in files:
         try:
-            parsed, saldos = parse_ofx(f.read())
+            parsed, saldos = parse_ofx(f.read(), origem)
             if not parsed.empty:
                 parsed["origem"] = origem
                 frames.append(parsed)
