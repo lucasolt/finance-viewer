@@ -884,7 +884,7 @@ else:
     else:
         saldos_sorted["caixinha"] = 0.0
 
-    nw_tab1, nw_tab2 = st.tabs(["Acumulado", "Rendimento mensal"])
+    nw_tab1, nw_tab2, nw_tab3 = st.tabs(["Evolução do patrimônio", "Rendimento mensal", "Rendimento acumulado"])
 
     with nw_tab1:
         fig_nw = go.Figure()
@@ -952,6 +952,28 @@ else:
             tbl_r["Rendimento"] = tbl_r["Rendimento"].map(fmt_brl)
             st.dataframe(tbl_r.sort_values("Data", ascending=False).reset_index(drop=True),
                          width='stretch', height=280)
+
+    with nw_tab3:
+        rend = saldos_sorted[saldos_sorted["rendimento_conta"].notna()].copy()
+        if rend.empty:
+            st.info("Nenhum dado de rendimento ainda — re-faça o upload dos extratos para popular.")
+        else:
+            rend = rend.sort_values("data")
+            rend["rendimento_acum"] = rend["rendimento_conta"].cumsum()
+            fig_acum = go.Figure()
+            fig_acum.add_scatter(
+                x=rend["data"], y=rend["rendimento_acum"],
+                name="Rendimento acumulado", mode="lines+markers",
+                line=dict(color=colors[0], width=2), marker=dict(size=6),
+                fill="tozeroy", fillcolor="rgba(200,240,96,0.12)",
+                hovertemplate="<b>%{x|%Y-%m-%d}</b><br>Acumulado: R$ %{y:,.2f}<extra></extra>",
+            )
+            fig_acum.update_layout(
+                **build_plotly_theme(), height=380,
+                xaxis_title=None, yaxis_title="R$", showlegend=False,
+            )
+            st.plotly_chart(fig_acum, width='stretch')
+            st.metric("Total acumulado", fmt_brl(rend["rendimento_acum"].iloc[-1]))
 
 with tab4:
     show_raw = dff_tabela[["data","descricao","categoria","valor","origem","reembolsado"]].copy()
