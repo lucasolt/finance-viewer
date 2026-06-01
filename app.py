@@ -313,12 +313,7 @@ if "prefs_loaded" not in st.session_state:
         st.session_state["cat_state"] = json.loads(prefs["cat_state"])
     if "tipo" in prefs:
         st.session_state["tipo_radio"] = prefs["tipo"]
-    if "date_range" in prefs:
-        try:
-            _dr = json.loads(prefs["date_range"].replace("'", '"'))
-            st.session_state["date_range"] = [_dr[0], _dr[1]]
-        except:
-            pass
+
     st.session_state["prefs_loaded"] = True
 
 # ── Header ────────────────────────────────────────────────────────────────────
@@ -389,7 +384,7 @@ with st.sidebar:
     _min_date = df["data"].min().date()
     _max_date = df["data"].max().date()
     # load saved range if available
-    _saved_range = st.session_state.get("date_range", None) or st.session_state.get("_dr_saved", None)
+    _saved_range = st.session_state.get("date_range", None)
     if _saved_range and isinstance(_saved_range, (list, tuple)) and len(_saved_range) == 2:
         try:
             _default_range = (datetime.date.fromisoformat(str(_saved_range[0])),
@@ -426,7 +421,7 @@ with st.sidebar:
         d_start, d_end = date_range[0], _max_date
     else:
         d_start, d_end = _min_date, _max_date
-    save_pref("date_range", str([str(d_start), str(d_end)]))
+
     _tipo_opts = ["Gastos", "Receitas", "Tudo"]
     _tipo_idx = _tipo_opts.index(st.session_state.get("tipo_radio", "Gastos")) if st.session_state.get("tipo_radio") in _tipo_opts else 0
     tipo = st.radio("Tipo", _tipo_opts, index=_tipo_idx)
