@@ -980,8 +980,14 @@ else:
             st.metric("Total acumulado", fmt_brl(rend["rendimento_acum"].iloc[-1]))
 
 with tab4:
-    show_raw = dff_tabela[["data","descricao","categoria","valor","origem","reembolsado"]].copy()
-    show_raw = show_raw.sort_values("data", ascending=False).reset_index(drop=True)
+    # aplica filtro de tipo mas mantém reembolsados visíveis
+    if tipo == "Gastos":
+        show_raw = dff_tabela[dff_tabela["valor"] < 0].copy()
+    elif tipo == "Receitas":
+        show_raw = dff_tabela[dff_tabela["valor"] > 0].copy()
+    else:
+        show_raw = dff_tabela.copy()
+    show_raw = show_raw[["data","descricao","categoria","valor","origem","reembolsado"]].sort_values("data", ascending=False).reset_index(drop=True)
     show = show_raw.copy()
     show["valor_fmt"] = show["valor"].map(fmt_brl_signed)
     show_display = show.drop(columns=["valor"]).rename(columns={
