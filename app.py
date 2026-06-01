@@ -598,7 +598,7 @@ with st.sidebar:
 
     st.markdown("### Categorias")
     cats = sorted(df["categoria"].unique())
-    EXCLUDED_BY_DEFAULT = {"Pagamento de Fatura", "Crédito de Fatura", "Transferência Pessoal", "Investimento"}
+    EXCLUDED_BY_DEFAULT = {"Pagamento de Fatura", "Crédito de Fatura", "Investimento"}
 
     # Inicializa estado das categorias na primeira vez ou para categorias novas
     if "cat_state" not in st.session_state:
