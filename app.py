@@ -511,7 +511,7 @@ with st.sidebar:
 
     # Dropdown de presets
     PRESET_OPTS = ["Tudo", "Últimos 12 meses", "Este ano (YTD)", "Este mês", "Personalizado", "Barra deslizante"]
-    preset = st.selectbox("Período", PRESET_OPTS, index=0, key="date_preset")
+    preset = st.selectbox("Período", PRESET_OPTS, index=5, key="date_preset")
 
     # lista de meses disponíveis (pro slider)
     _meses_disp = sorted(df["mes"].unique())
