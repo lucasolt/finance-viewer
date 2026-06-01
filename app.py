@@ -193,6 +193,10 @@ CATEGORY_MAP = {
 def fmt_brl(val: float) -> str:
     return f"R$ {abs(val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
+def fmt_brl_signed(val: float) -> str:
+    sign = "+" if val > 0 else "-" if val < 0 else ""
+    return f"{sign} R$ {abs(val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
 def df_to_xlsx(df: pd.DataFrame) -> bytes:
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as writer:
@@ -561,10 +565,10 @@ else:
     networth_label = "—"
 
 c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("Total gasto",    fmt_brl(gastos))
-c2.metric("Total recebido", fmt_brl(receitas))
-c3.metric("Saldo período",  fmt_brl(saldo))
-c4.metric("Transações",     len(dff))
+c1.metric("Total gasto",     fmt_brl(gastos))
+c2.metric("Total recebido",  fmt_brl(receitas))
+c3.metric("Saldo período",   fmt_brl_signed(saldo))
+c4.metric("Transações",      len(dff))
 c5.metric("Networth aprox.", networth_label)
 
 # Mini-painel de patrimônio
@@ -802,7 +806,7 @@ with tab4:
     show_raw = dff[["data","descricao","categoria","valor","origem"]].copy()
     show_raw = show_raw.sort_values("data", ascending=False).reset_index(drop=True)
     show = show_raw.copy()
-    show["valor"] = show["valor"].map(lambda v: f"{'+' if v > 0 else ''}{fmt_brl(v)}")
+    show["valor"] = show["valor"].map(lambda v: f"{'+' if v > 0 else ''}{fmt_brl_signed(v)}")
     show.columns = ["Data","Descrição","Categoria","Valor","Origem"]
     st.dataframe(show, width='stretch', height=480)
     st.download_button("⬇ baixar transações (.xlsx)",
