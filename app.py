@@ -327,8 +327,14 @@ with st.sidebar:
                  key="color_scheme")
     st.divider()
     st.markdown("### Filtros")
-    meses = sorted(df["mes"].unique())
-    meses_sel = st.multiselect("Meses", meses, default=meses)
+    # Ano
+    anos = sorted(df["data"].dt.year.unique())
+    ano_sel = st.selectbox("Ano", ["Todos"] + [str(a) for a in anos], index=0)
+    # Range de meses
+    MONTH_NAMES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
+    m_range = st.select_slider("Período", options=list(range(1, 13)),
+                               format_func=lambda x: MONTH_NAMES[x-1],
+                               value=(1, 12))
     cats = sorted(df["categoria"].unique())
     default_cats = [c for c in cats if c != "Pagamento de Fatura"]
     cats_sel = st.multiselect("Categorias", cats, default=default_cats)
@@ -343,7 +349,12 @@ with st.sidebar:
         st.rerun()
 
 # ── Filter ────────────────────────────────────────────────────────────────────
-dff = df[df["mes"].isin(meses_sel) & df["categoria"].isin(cats_sel)].copy()
+# apply date filter
+if ano_sel == "Todos":
+    mask_data = (df["data"].dt.month >= m_range[0]) & (df["data"].dt.month <= m_range[1])
+else:
+    mask_data = (df["data"].dt.year == int(ano_sel)) &                 (df["data"].dt.month >= m_range[0]) & (df["data"].dt.month <= m_range[1])
+dff = df[mask_data & df["categoria"].isin(cats_sel)].copy()
 if tipo == "Gastos":
     dff = dff[dff["valor"] < 0]
 elif tipo == "Receitas":
