@@ -235,6 +235,8 @@ def load_from_supabase() -> pd.DataFrame:
     df = pd.DataFrame(res.data)
     df["data"] = pd.to_datetime(df["data"])
     df["mes"] = df["data"].dt.to_period("M").astype(str)
+    # sempre recategoriza na leitura — garante que mudanças no CATEGORY_MAP reflitam
+    df["categoria"] = df["descricao"].apply(guess_category)
     return df
 
 def save_to_supabase(df: pd.DataFrame):
