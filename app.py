@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pdimport streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -622,7 +623,7 @@ with tab3:
                    .sum().reset_index().sort_values("mes"))
         # order gastos categories by mean — largest at bottom
         gas_order = (gas_cat.groupby("categoria")["valor_abs"]
-                     .mean().sort_values(ascending=False).index.tolist())
+                     .median().sort_values(ascending=False).index.tolist())
         colors = get_colors()
         fig_ev = go.Figure()
         # gastos (negative stack) — largest mean at bottom = first added
@@ -648,7 +649,7 @@ with tab3:
         meses_u = sorted(por_mes_cat["mes"].unique())
         # largest mean at bottom = added first
         cat_order = (por_mes_cat.groupby("categoria")["valor_abs"]
-                     .mean().sort_values(ascending=False).index.tolist())
+                     .median().sort_values(ascending=False).index.tolist())
         colors = get_colors()
         fig_ev = go.Figure()
         for i, cat in enumerate(cat_order):
