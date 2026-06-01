@@ -590,7 +590,7 @@ if not df_saldos.empty or saldo_caixinha != 0:
 st.divider()
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4 = st.tabs(["Por mês", "Por categoria", "Evolução", "Transações"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Por mês", "Por categoria", "Evolução", "Networth", "Transações"])
 
 with tab1:
     if dff.empty:
@@ -737,6 +737,72 @@ with tab3:
         st.plotly_chart(fig_ev, width='stretch')
 
 with tab4:
+    if df_saldos.empty:
+        st.info("Nenhum dado de saldo ainda — faça upload dos extratos.")
+    else:
+        colors = get_colors()
+        accent = get_accent()
+
+        # Caixinha acumulada por data (usando todas as transações, não só as filtradas)
+        caixinha_txns = df[df["descricao"].str.lower().str.contains(
+            "aplicação rdb|aplicacao rdb|resgate rdb", na=False
+        )].sort_values("data").copy()
+        caixinha_txns["caixinha_acum"] = (-caixinha_txns["valor"]).cumsum()
+
+        # Saldos da conta ordenados
+        saldos_sorted = df_saldos.sort_values("data").copy()
+        saldos_sorted["networth"] = saldos_sorted["balamt"]
+
+        # Adiciona caixinha ao networth interpolando por data
+        if not caixinha_txns.empty:
+            # Para cada ponto de saldo, pega o acumulado da caixinha até aquela data
+            def caixinha_em(data):
+                antes = caixinha_txns[caixinha_txns["data"] <= data]
+                return float(antes["caixinha_acum"].iloc[-1]) if not antes.empty else 0.0
+            saldos_sorted["caixinha"] = saldos_sorted["data"].apply(caixinha_em)
+            saldos_sorted["networth"] = saldos_sorted["balamt"] + saldos_sorted["caixinha"]
+        else:
+            saldos_sorted["caixinha"] = 0.0
+
+        fig_nw = go.Figure()
+        fig_nw.add_scatter(
+            x=saldos_sorted["data"], y=saldos_sorted["networth"],
+            name="Networth", mode="lines+markers",
+            line=dict(color=colors[0], width=2), marker=dict(size=6),
+            hovertemplate="<b>%{x|%Y-%m-%d}</b><br>Networth: R$ %{y:,.2f}<extra></extra>",
+            fill="tozeroy", fillcolor=colors[0] + "22",
+        )
+        fig_nw.add_scatter(
+            x=saldos_sorted["data"], y=saldos_sorted["balamt"],
+            name="Conta", mode="lines+markers",
+            line=dict(color=colors[1], width=2, dash="dot"), marker=dict(size=5),
+            hovertemplate="<b>%{x|%Y-%m-%d}</b><br>Conta: R$ %{y:,.2f}<extra></extra>",
+        )
+        if saldos_sorted["caixinha"].sum() != 0:
+            fig_nw.add_scatter(
+                x=saldos_sorted["data"], y=saldos_sorted["caixinha"],
+                name="Caixinha (aprox.)", mode="lines+markers",
+                line=dict(color=colors[2], width=2, dash="dash"), marker=dict(size=5),
+                hovertemplate="<b>%{x|%Y-%m-%d}</b><br>Caixinha: R$ %{y:,.2f}<extra></extra>",
+            )
+        fig_nw.update_layout(
+            **build_plotly_theme(), height=440,
+            xaxis_title=None, yaxis_title="R$",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=11)),
+        )
+        st.plotly_chart(fig_nw, width='stretch')
+
+        # Tabela resumo
+        st.markdown("<p style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:0.08em;'>histórico de saldos</p>", unsafe_allow_html=True)
+        tbl = saldos_sorted[["data","balamt","caixinha","networth"]].copy()
+        tbl.columns = ["Data","Conta","Caixinha","Networth"]
+        tbl["Data"] = tbl["Data"].dt.date
+        for col in ["Conta","Caixinha","Networth"]:
+            tbl[col] = tbl[col].map(fmt_brl)
+        st.dataframe(tbl.sort_values("Data", ascending=False).reset_index(drop=True),
+                     width='stretch', height=300)
+
+with tab5:
     show_raw = dff[["data","descricao","categoria","valor","origem"]].copy()
     show_raw = show_raw.sort_values("data", ascending=False).reset_index(drop=True)
     show = show_raw.copy()
