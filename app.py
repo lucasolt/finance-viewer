@@ -263,6 +263,50 @@ def parse_ofx(file_bytes: bytes, origem: str = "extrato") -> tuple:
     df["categoria"] = df["descricao"].apply(guess_category)
     return df, saldos
 
+def detectar_reembolsos(df: pd.DataFrame, janela_dias: int = 90) -> pd.DataFrame:
+    """Marca pares (reembolso recebido <-> transferência enviada) com mesmo
+    CNPJ/CPF e valor absoluto, dentro de uma janela de tempo. Adiciona coluna
+    'reembolsado' (bool). Pares casados são neutralizados nos cálculos."""
+    import re as _re
+    df = df.copy()
+    df["reembolsado"] = False
+    if df.empty:
+        return df
+
+    def extrai_doc(desc):
+        # captura CNPJ (xx.xxx.xxx/xxxx-xx) ou CPF mascarado
+        m = _re.search(r"\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}", str(desc))
+        if m:
+            return m.group(0)
+        m = _re.search(r"•{3}\.\d{3}\.\d{3}-•{2}", str(desc))
+        return m.group(0) if m else None
+
+    df["_doc"] = df["descricao"].apply(extrai_doc)
+    df["_eh_reembolso"] = df["descricao"].str.lower().str.startswith("reembolso recebido")
+    df["_eh_envio"] = df["descricao"].str.lower().str.startswith("transferência enviada")
+
+    reembolsos = df[df["_eh_reembolso"] & df["_doc"].notna()]
+    usados = set()
+    for idx_r, reemb in reembolsos.iterrows():
+        valor_abs = abs(reemb["valor"])
+        doc = reemb["_doc"]
+        data_r = reemb["data"]
+        # candidatos: envios com mesmo doc, mesmo valor abs, dentro da janela
+        cand = df[
+            df["_eh_envio"] & (df["_doc"] == doc) &
+            (df["valor"].abs().round(2) == round(valor_abs, 2)) &
+            (abs((df["data"] - data_r).dt.days) <= janela_dias) &
+            (~df.index.isin(usados))
+        ]
+        if not cand.empty:
+            idx_envio = cand.index[0]
+            df.at[idx_r, "reembolsado"] = True
+            df.at[idx_envio, "reembolsado"] = True
+            usados.add(idx_r)
+            usados.add(idx_envio)
+
+    return df.drop(columns=["_doc", "_eh_reembolso", "_eh_envio"])
+
 @st.cache_resource
 def get_supabase():
     url = st.secrets["SUPABASE_URL"]
@@ -289,6 +333,7 @@ def load_from_supabase() -> pd.DataFrame:
     df["data"] = pd.to_datetime(df["data"])
     df["mes"] = df["data"].dt.to_period("M").astype(str)
     df["categoria"] = df["descricao"].apply(guess_category)
+    df = detectar_reembolsos(df)
     return df
 
 def save_to_supabase(df: pd.DataFrame):
@@ -542,15 +587,18 @@ with st.sidebar:
 # ── Filter ────────────────────────────────────────────────────────────────────
 import datetime as _dt
 mask_data = (df["data"].dt.date >= d_start) & (df["data"].dt.date <= d_end)
-dff = df[mask_data & df["categoria"].isin(cats_sel)].copy()
+# dff_tabela: tudo (inclui reembolsados) — pra tabela de transações
+dff_tabela = df[mask_data & df["categoria"].isin(cats_sel)].copy()
+# dff: exclui reembolsados — pra gráficos e cálculos
+dff = dff_tabela[~dff_tabela["reembolsado"]].copy()
 if tipo == "Gastos":
     dff = dff[dff["valor"] < 0]
 elif tipo == "Receitas":
     dff = dff[dff["valor"] > 0]
 dff["valor_abs"] = dff["valor"].abs()
 
-# dff_total: aplica todos os filtros exceto tipo — usado nos KPIs
-dff_total = df[mask_data & df["categoria"].isin(cats_sel)].copy()
+# dff_total: aplica todos os filtros exceto tipo — usado nos KPIs (exclui reembolsados)
+dff_total = dff_tabela[~dff_tabela["reembolsado"]].copy()
 
 # ── KPIs ──────────────────────────────────────────────────────────────────────
 gastos   = dff_total[dff_total["valor"] < 0]["valor"].sum()
@@ -806,24 +854,36 @@ else:
                  width='stretch', height=300)
 
 with tab4:
-    show_raw = dff[["data","descricao","categoria","valor","origem"]].copy()
+    show_raw = dff_tabela[["data","descricao","categoria","valor","origem","reembolsado"]].copy()
     show_raw = show_raw.sort_values("data", ascending=False).reset_index(drop=True)
     show = show_raw.copy()
     show["valor_fmt"] = show["valor"].map(fmt_brl_signed)
-    show = show.drop(columns=["valor"]).rename(columns={
+    show_display = show.drop(columns=["valor"]).rename(columns={
         "data":"Data","descricao":"Descrição","categoria":"Categoria",
         "valor_fmt":"Valor","origem":"Origem"
     })
 
-    def color_valor(val):
-        if val.startswith("- "):
-            return "color: #ff6b6b"
-        return "color: #a8e063"
+    def style_row(row):
+        # reembolsados ficam cinza fraco em toda a linha
+        if row["reembolsado"]:
+            return ["color: #555"] * len(row)
+        styles = [""] * len(row)
+        # cor no valor
+        val_idx = list(row.index).index("Valor")
+        if str(row["Valor"]).startswith("- "):
+            styles[val_idx] = "color: #ff6b6b"
+        else:
+            styles[val_idx] = "color: #a8e063"
+        return styles
 
-    st.dataframe(
-        show.style.map(color_valor, subset=["Valor"]),
-        width='stretch', height=480
-    )
+    styled = show_display.style.apply(style_row, axis=1)
+    # esconde a coluna auxiliar reembolsado
+    styled = styled.hide(axis="columns", subset=["reembolsado"])
+
+    st.dataframe(styled, width='stretch', height=480)
+    n_reemb = show_raw["reembolsado"].sum()
+    if n_reemb > 0:
+        st.markdown(f"<p style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;'>{n_reemb} transação(ões) em cinza = reembolso casado, neutralizado dos cálculos</p>", unsafe_allow_html=True)
     st.download_button("⬇ baixar transações (.xlsx)",
-                       df_to_xlsx(show_raw.rename(columns={"data":"Data","descricao":"Descrição","categoria":"Categoria","valor":"Valor","origem":"Origem"})),
+                       df_to_xlsx(show_raw.rename(columns={"data":"Data","descricao":"Descrição","categoria":"Categoria","valor":"Valor","origem":"Origem","reembolsado":"Reembolsado"})),
                        "transacoes.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
