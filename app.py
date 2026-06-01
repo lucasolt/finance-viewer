@@ -411,11 +411,15 @@ with st.sidebar:
     col_a, col_b = st.columns(2)
     if col_a.button("✓ Tudo", use_container_width=True):
         for c in cats:
+            st.session_state[f"cat_{c}"] = True
             st.session_state.cat_state[c] = True
+        save_pref("cat_state", json.dumps(st.session_state.cat_state))
         st.rerun()
     if col_b.button("✗ Nada", use_container_width=True):
         for c in cats:
+            st.session_state[f"cat_{c}"] = False
             st.session_state.cat_state[c] = False
+        save_pref("cat_state", json.dumps(st.session_state.cat_state))
         st.rerun()
 
     cats_sel = []
@@ -426,10 +430,23 @@ with st.sidebar:
             cats_sel.append(c)
     save_pref("cat_state", json.dumps({k: v for k, v in st.session_state.cat_state.items()}))
     st.divider()
-    if st.button("🗑 Apagar todos os dados"):
-        get_supabase().table("transacoes").delete().neq("id", 0).execute()
-        load_from_supabase.clear()
-        st.rerun()
+    if "confirm_delete" not in st.session_state:
+        st.session_state.confirm_delete = False
+    if not st.session_state.confirm_delete:
+        if st.button("🗑 Apagar todos os dados"):
+            st.session_state.confirm_delete = True
+            st.rerun()
+    else:
+        st.warning("Tem certeza? Isso apaga tudo.")
+        col_c, col_d = st.columns(2)
+        if col_c.button("✓ Sim", use_container_width=True):
+            get_supabase().table("transacoes").delete().neq("id", 0).execute()
+            load_from_supabase.clear()
+            st.session_state.confirm_delete = False
+            st.rerun()
+        if col_d.button("✗ Não", use_container_width=True):
+            st.session_state.confirm_delete = False
+            st.rerun()
     if st.button("🚪 Sair"):
         st.session_state.authed = False
         st.rerun()
