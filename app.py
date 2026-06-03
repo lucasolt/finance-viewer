@@ -94,6 +94,9 @@ def build_plotly_theme() -> dict:
 
 CATEGORY_MAP = {
     # iFood
+    # Vicios
+    "tabarcaria": "Vícios & Conveniência",
+    "trinca tabarcaria": "Vícios & Conveniência",
     # Alimentação — estabelecimentos
     "zaffari": "Alimentação",
     "companhiazaffari": "Alimentação",
@@ -112,11 +115,12 @@ CATEGORY_MAP = {
     "lanche": "Alimentação",
     "pizza": "Alimentação",
     "pão de açúcar": "Alimentação",
+    "hot dog" : "Alimentação",
     # Transporte
     "99": "Transporte",
     "cabify": "Transporte",
-    "shell": "Transporte",
-    "posto": "Transporte",
+    #"shell": "Transporte",
+    #"posto": "Transporte",
     "estacionamento": "Transporte",
     "onibus": "Transporte",
     "metro": "Transporte",
@@ -139,12 +143,18 @@ CATEGORY_MAP = {
     "medico": "Saúde",
     "clinica": "Saúde",
     "academia": "Saúde",
+    "raia" : "Saúde",
+    "pague menos" : "Saúde",
     # Streaming
-    "netflix": "Streaming",
-    "amazon prime": "Streaming",
-    "hbo": "Streaming",
-    "disney": "Streaming",
-    "globoplay": "Streaming",
+    "netflix": "Assinaturas",
+    "amazon prime": "Assinaturas",
+    "hbo": "Assinaturas",
+    "disney": "Assinaturas",
+    "globoplay": "Assinaturas",
+    "tinder" : "Assinaturas",
+    #"claude" : "Assinaturas",
+    "subscription" : "Assinaturas",
+    
     # Telecom
     "telefonica brasil": "Telecom",
     "conta vivo": "Telecom",
@@ -174,13 +184,14 @@ CATEGORY_MAP = {
     "riachuelo": "Vestuário",
     "zara": "Vestuário",
     # Lazer
-    "tabarcaria": "Lazer",
-    "trinca tabarcaria": "Lazer",
+
     "ingresso com": "Lazer",
     "steam": "Lazer",
     "cinema": "Lazer",
     "bar": "Lazer",
     "cerveja": "Lazer",
+    "territoriopub" : "Lazer",
+    "plano pixel" : "Lazer",
     # Casa
     "aluguel": "Casa",
     "condominio": "Casa",
@@ -237,9 +248,11 @@ def guess_category(desc: str, valor: float = 0.0) -> str:
         (r"^ifd\*",           "iFood"),
         (r"ifood",            "iFood"),
         (r"\buber\b",         "Transporte"),
-        (r"^dm \*",           "Streaming"),
-        (r"\*spotify",        "Streaming"),
+        (r"uberride",     "Transporte"),
+        (r"^dm \*",           "Assinaturas"),
+        (r"\*spotify",        "Assinaturas"),
         (r"\*appgas",         "Casa"),
+        (r"\bpub\b", "Lazer"),
         (r"^pagamento recebido$", "Crédito de Fatura"),
     ]
     for pattern, cat in REGEX_MAP:
