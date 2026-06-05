@@ -134,7 +134,7 @@ CATEGORY_MAP = {
     "onibus": "Transporte",
     "metro": "Transporte",
     "passagem": "Transporte",
-    "veppo cia": "Transporte".
+    "veppo cia": "Transporte",
     # Saúde
     "panvel": "Saúde",
     "sao joao farmacias": "Saúde",
