@@ -15,7 +15,7 @@ class PluggyClient:
     def __init__(self, client_id: str, client_secret: str, timeout: int = 30):
         self.client_id = client_id
         self.client_secret = client_secret
-        self.timeout = timeoutg
+        self.timeout = timeout
         self._api_key: str | None = None
 
     # ---- auth ----
