@@ -55,10 +55,8 @@ class PluggyClient:
 
    
     # ---- transactions (v2, cursor-based) ----
-    def get_transactions(self, account_id: str, page_size: int = 500,
-                     **filters) -> list[dict]:
-        """Usa /v2/transactions com cursor pagination (endpoint v1 retorna 410)."""
-        params = {"accountId": account_id, "pageSize": page_size}
+    def get_transactions(self, account_id: str, **filters):
+        params = {"accountId": account_id}
         params.update(filters)
 
         out = []
@@ -66,10 +64,14 @@ class PluggyClient:
             data = self._get("/v2/transactions", params)
             out.extend(data.get("results", []))
 
-            cursor = data.get("nextCursor")
-            if not cursor:
+            nxt = data.get("next")
+            if not nxt:
                 break
-            params["cursor"] = cursor
+        # "next" vem como query string: "?accountId=xxx&after=yyy"
+        # extrai só o valor do "after"
+            from urllib.parse import parse_qs, urlparse
+            parsed = parse_qs(urlparse(nxt).query if "?" in nxt else nxt.lstrip("?"))
+            params["after"] = parsed["after"][0]
 
         return out
 
