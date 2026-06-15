@@ -1,1 +1,1 @@
-# finance-viewer
+# finance-viewer - backup versão supabase
