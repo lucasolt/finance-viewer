@@ -15,7 +15,7 @@ class PluggyClient:
     def __init__(self, client_id: str, client_secret: str, timeout: int = 30):
         self.client_id = client_id
         self.client_secret = client_secret
-        self.timeout = timeout
+        self.timeout = timeoutg
         self._api_key: str | None = None
 
     # ---- auth ----
@@ -53,25 +53,26 @@ class PluggyClient:
     def get_accounts(self, item_id: str) -> list[dict]:
         return self._get("/accounts", {"itemId": item_id}).get("results", [])
 
-    # ---- transactions (paginado) ----
+   
+    # ---- transactions (v2, cursor-based) ----
     def get_transactions(self, account_id: str, page_size: int = 500,
-                         max_pages: int = 50, **filters) -> list[dict]:
-        """filters: from='YYYY-MM-DD', to='YYYY-MM-DD' (opcionais)."""
-        out, page = [], 1
-        while page <= max_pages:
-            params = {"accountId": account_id, "pageSize": page_size, "page": page}
-            params.update(filters)
-            data = self._get("/transactions", params)
-            batch = data.get("results", [])
-            out.extend(batch)
-            total_pages = data.get("totalPages")
-            if total_pages is not None:
-                if page >= total_pages:
-                    break
-            elif len(batch) < page_size:
+                     **filters) -> list[dict]:
+        """Usa /v2/transactions com cursor pagination (endpoint v1 retorna 410)."""
+        params = {"accountId": account_id, "pageSize": page_size}
+        params.update(filters)
+
+        out = []
+        while True:
+            data = self._get("/v2/transactions", params)
+            out.extend(data.get("results", []))
+
+            cursor = data.get("nextCursor")
+            if not cursor:
                 break
-            page += 1
+            params["cursor"] = cursor
+
         return out
+
 
     def all_transactions(self, item_id: str, **filters) -> list[dict]:
         """Todas as transações de todas as contas do item."""
