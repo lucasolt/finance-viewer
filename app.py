@@ -77,6 +77,19 @@ COLOR_SCHEMES = {
                      "#98a2b0","#7e8e98","#b4bec8","#646e7a","#c8d0d8","#505860","#8a949e","#d0d8e0"],
 }
 
+# ── PluggyAPI ───────────────────────────────────────────────────────────────────────
+from pluggy_client import PluggyClient, transactions_to_df
+
+@st.cache_resource
+def get_pluggy():
+    c = PluggyClient(st.secrets["pluggy"]["client_id"],
+                     st.secrets["pluggy"]["client_secret"])
+    c.authenticate()
+    return c
+
+
+# ─────────────────────────────────────────────────────────────────────────────────────
+
 def get_colors() -> list:
     return COLOR_SCHEMES.get(st.session_state.get("color_scheme", "Lima 🟢"), COLOR_SCHEMES["Lima 🟢"])
 
