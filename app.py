@@ -752,7 +752,7 @@ if not df_saldos.empty or saldo_caixinha != 0:
 st.divider()
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["Por mês", "Por categoria", "Evolução", "Transações", "🔌 Pluggy"]
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Por mês", "Por categoria", "Evolução", "Transações", "🔌 Pluggy"])
 
 with tab1:
     if dff.empty:
