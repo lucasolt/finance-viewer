@@ -752,7 +752,7 @@ if not df_saldos.empty or saldo_caixinha != 0:
 st.divider()
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4 = st.tabs(["Por mês", "Por categoria", "Evolução", "Transações"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Por mês", "Por categoria", "Evolução", "Transações", "🔌 Pluggy"]
 
 with tab1:
     if dff.empty:
@@ -897,6 +897,32 @@ with tab3:
                              barmode="stack",
                              legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=11)))
         st.plotly_chart(fig_ev, width='stretch')
+
+
+with tab5:
+    st.markdown("### Dados brutos do Pluggy")
+    try:
+        raw_txns = get_pluggy().all_transactions(st.secrets["pluggy"]["item_id"])
+        df_pluggy = transactions_to_df(raw_txns)
+        st.markdown(f"**Shape:** `{df_pluggy.shape}`")
+        st.markdown("**Colunas:**")
+        st.code(str(df_pluggy.columns.tolist()))
+        st.markdown("**Dtypes:**")
+        st.dataframe(
+            df_pluggy.dtypes.reset_index().rename(columns={"index": "coluna", 0: "tipo"}),
+            use_container_width=True,
+        )
+        st.divider()
+        st.markdown("**Primeiras 5 linhas (transposto):**")
+        st.dataframe(df_pluggy.head().T, use_container_width=True)
+        st.divider()
+        st.markdown("**Todas as transações:**")
+        st.dataframe(df_pluggy, use_container_width=True, height=500)
+    except Exception as e:
+        st.error(f"Erro ao conectar com Pluggy: {e}")
+        import traceback
+        st.code(traceback.format_exc())
+
 
 # ── Barra deslizante de período (quando ativada no dropdown) ───────────────────
 if preset == "Barra deslizante" and len(_meses_disp) > 1:
