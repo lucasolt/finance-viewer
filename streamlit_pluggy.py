@@ -1,80 +1,104 @@
 """
-streamlit_pluggy.py — página Streamlit que lê dados via Pluggy Data API.
+pluggy_client.py — wrapper mínimo da Pluggy Data API para uso pessoal.
 
-Setup:
-1. pip install streamlit requests pandas
-2. crie .streamlit/secrets.toml com:
-
-   [pluggy]
-   client_id = "seu-client-id"
-   client_secret = "seu-client-secret"
-   item_id = "seu-item-id"          # ou uma lista: item_ids = ["id1", "id2"]
-
-3. streamlit run streamlit_pluggy.py
+Fluxo: client_id/secret -> API key (2h) -> fetch accounts/transactions por itemId.
+Não usa connect token (só necessário pro widget frontend).
 """
-import streamlit as st
+from __future__ import annotations
+import requests
 import pandas as pd
-from pluggy_client import PluggyClient, transactions_to_df
 
-st.set_page_config(page_title="Pluggy", layout="wide")
-st.title("Dados financeiros via Pluggy")
-
-cfg = st.secrets["pluggy"]
-item_ids = cfg.get("item_ids") or [cfg["item_id"]]
+BASE = "https://api.pluggy.ai"
 
 
-# API key vale 2h; cacheia o client autenticado por ~1h45 pra ser seguro.
-@st.cache_resource
-def get_client():
-    c = PluggyClient(cfg["client_id"], cfg["client_secret"])
-    c.authenticate()
-    return c
+class PluggyClient:
+    def __init__(self, client_id: str, client_secret: str, timeout: int = 30):
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.timeout = timeout
+        self._api_key: str | None = None
+
+    # ---- auth ----
+    def authenticate(self) -> str:
+        r = requests.post(
+            f"{BASE}/auth",
+            json={"clientId": self.client_id, "clientSecret": self.client_secret},
+            timeout=self.timeout,
+        )
+        r.raise_for_status()
+        self._api_key = r.json()["apiKey"]
+        return self._api_key
+
+    @property
+    def _headers(self) -> dict:
+        if not self._api_key:
+            self.authenticate()
+        return {"X-API-KEY": self._api_key, "Accept": "application/json"}
+
+    def _get(self, path: str, params: dict | None = None) -> dict:
+        r = requests.get(f"{BASE}{path}", params=params or {},
+                         headers=self._headers, timeout=self.timeout)
+        # API key expira em 2h -> reautentica uma vez em 403/401
+        if r.status_code in (401, 403):
+            self.authenticate()
+            r = requests.get(f"{BASE}{path}", params=params or {},
+                             headers=self._headers, timeout=self.timeout)
+        r.raise_for_status()
+        return r.json()
+
+    # ---- item / accounts ----
+    def get_item(self, item_id: str) -> dict:
+        return self._get(f"/items/{item_id}")
+
+    def get_accounts(self, item_id: str) -> list[dict]:
+        return self._get("/accounts", {"itemId": item_id}).get("results", [])
+
+    def get_investments(self, item_id: str) -> list[dict]:
+        return self._get("/investments", {"itemId": item_id}).get("results", [])
+
+   
+    # ---- transactions (v2, cursor-based) ----
+    def get_transactions(self, account_id: str, **filters):
+        params = {"accountId": account_id}
+        params.update(filters)
+
+        out = []
+        while True:
+            data = self._get("/v2/transactions", params)
+            out.extend(data.get("results", []))
+
+            nxt = data.get("next")
+            if not nxt:
+                break
+        # "next" vem como query string: "?accountId=xxx&after=yyy"
+        # extrai só o valor do "after"
+            from urllib.parse import parse_qs, urlparse
+            parsed = parse_qs(urlparse(nxt).query if "?" in nxt else nxt.lstrip("?"))
+            params["after"] = parsed["after"][0]
+
+        return out
 
 
-@st.cache_data(ttl=60 * 60, show_spinner="Buscando dados na Pluggy...")
-def load_data(item_ids: list[str]) -> pd.DataFrame:
-    client = get_client()
-    all_txns = []
-    for iid in item_ids:
-        all_txns.extend(client.all_transactions(iid))
-    return transactions_to_df(all_txns)
+    def all_transactions(self, item_id: str, **filters) -> list[dict]:
+        """Todas as transações de todas as contas do item."""
+        txns = []
+        for acc in self.get_accounts(item_id):
+            for t in self.get_transactions(acc["id"], **filters):
+                t["accountId"] = acc["id"]
+                t["accountName"] = acc.get("name") or acc.get("marketingName")
+                txns.append(t)
+        return txns
 
 
-with st.sidebar:
-    st.caption("Conexões: " + ", ".join(item_ids))
-    if st.button("Forçar refresh"):
-        load_data.clear()
-        get_client.clear()
-        st.rerun()
-
-df = load_data(item_ids)
-
-if df.empty:
-    st.warning("Nenhuma transação retornada. Confira o item_id e se a conexão "
-               "no Meu Pluggy está ativa (status do item).")
-    st.stop()
-
-# filtro de período
-if "date" in df.columns:
-    dmin, dmax = df["date"].min().date(), df["date"].max().date()
-    start, end = st.slider("Período", dmin, dmax, (dmin, dmax))
-    mask = (df["date"].dt.date >= start) & (df["date"].dt.date <= end)
-    view = df[mask]
-else:
-    view = df
-
-c1, c2, c3 = st.columns(3)
-c1.metric("Transações", len(view))
-if "amount" in view.columns:
-    c2.metric("Entradas", f"R$ {view[view.amount > 0].amount.sum():,.2f}")
-    c3.metric("Saídas", f"R$ {view[view.amount < 0].amount.sum():,.2f}")
-
-st.dataframe(view, use_container_width=True, hide_index=True)
-
-# gasto por categoria
-if {"category", "amount"}.issubset(view.columns):
-    st.subheader("Saídas por categoria")
-    cat = (view[view.amount < 0]
-           .groupby("category")["amount"].sum().abs()
-           .sort_values(ascending=False))
-    st.bar_chart(cat)
+# ---- helpers de DataFrame ----
+def transactions_to_df(txns: list[dict]) -> pd.DataFrame:
+    if not txns:
+        return pd.DataFrame()
+    df = pd.json_normalize(txns)
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    keep = [c for c in ["id", "date", "description", "amount", "currencyCode",
+                        "category", "type", "accountName", "accountId"]
+            if c in df.columns]
+    df = df[keep]
+    return df.sort_values("date") if "date" in keep else df
