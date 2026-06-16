@@ -486,10 +486,10 @@ def load_saldo_pluggy() -> dict:
 
     resultado = {
         "conta": None,
-        "investimentos": 0.0,   # soma de amountWithdrawal (valor líquido resgatável)
+        "caixinha": 0.0,        # amountWithdrawal do CDB (líquido de IR)
         "fatura_cartao": None,
         "atualizado_em": None,
-        "investimentos_detalhe": [],  # lista de {nome, valor} pra mini-painel
+        "caixinha_detalhe": [],  # lista de {nome, valor} pra mini-painel
     }
 
     for item_id in item_ids:
@@ -515,8 +515,8 @@ def load_saldo_pluggy() -> dict:
             if inv.get("status") != "ACTIVE":
                 continue
             valor = inv.get("amountWithdrawal") or inv.get("balance") or 0.0
-            resultado["investimentos"] += valor
-            resultado["investimentos_detalhe"].append({
+            resultado["caixinha"] += valor
+            resultado["caixinha_detalhe"].append({
                 "nome": inv.get("name", "Investimento"),
                 "tipo": inv.get("subtype", inv.get("type", "")),
                 "valor": valor,
@@ -823,29 +823,32 @@ receitas = dff_total[dff_total["valor"] > 0]["valor"].sum()
 saldo    = gastos + receitas
 
 _pluggy_conta   = saldo_pluggy.get("conta")
-_pluggy_inv     = saldo_pluggy.get("investimentos", 0.0)
-_pluggy_inv_det = saldo_pluggy.get("investimentos_detalhe", [])
+_pluggy_caixinha = saldo_pluggy.get("caixinha", 0.0)
+_pluggy_cx_det  = saldo_pluggy.get("caixinha_detalhe", [])
 _pluggy_fatura  = saldo_pluggy.get("fatura_cartao")
 _pluggy_updated = saldo_pluggy.get("atualizado_em")
 
-# Fallback legacy: investimentos calculados pelas transações de RDB
+# Fallback legacy: caixinha calculada pelas transações de RDB
 caixinha_mask = df["descricao"].str.lower().str.contains("aplicação rdb|aplicacao rdb|resgate rdb", na=False)
 saldo_caixinha_txns = -df[caixinha_mask]["valor"].sum()
 
 if _pluggy_conta is not None:
-    balamt_recente = _pluggy_conta
-    networth       = balamt_recente + _pluggy_inv - (_pluggy_fatura or 0)
-    networth_label = fmt_brl(networth)
-    _saldo_fonte   = "pluggy"
+    balamt_recente   = _pluggy_conta
+    saldo_caixinha   = _pluggy_caixinha
+    networth         = balamt_recente + saldo_caixinha - (_pluggy_fatura or 0)
+    networth_label   = fmt_brl(networth)
+    _saldo_fonte     = "pluggy"
 elif not df_saldos.empty:
-    balamt_recente = float(df_saldos.sort_values("data").iloc[-1]["balamt"])
-    networth       = balamt_recente + saldo_caixinha_txns
-    networth_label = fmt_brl(networth)
-    _saldo_fonte   = "supabase"
+    balamt_recente   = float(df_saldos.sort_values("data").iloc[-1]["balamt"])
+    saldo_caixinha   = saldo_caixinha_txns
+    networth         = balamt_recente + saldo_caixinha
+    networth_label   = fmt_brl(networth)
+    _saldo_fonte     = "supabase"
 else:
-    balamt_recente = None
-    networth_label = "—"
-    _saldo_fonte   = None
+    balamt_recente   = None
+    saldo_caixinha   = saldo_caixinha_txns
+    networth_label   = "—"
+    _saldo_fonte     = None
 
 c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("Total gasto",     fmt_brl(gastos))
@@ -855,7 +858,7 @@ c4.metric("Transações",      len(dff_total))
 c5.metric("Networth aprox.", networth_label)
 
 # Mini-painel de patrimônio
-if _saldo_fonte or saldo_caixinha_txns != 0:
+if _saldo_fonte or saldo_caixinha != 0:
     _atualizado_str = (
         f"<div style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;'>🕐 atualizado: <span style='color:#e8e8e0'>{str(_pluggy_updated)[:10]}</span></div>"
         if _pluggy_updated else
@@ -866,20 +869,16 @@ if _saldo_fonte or saldo_caixinha_txns != 0:
         f"<div style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;'>💳 fatura: <span style='color:#ff6b6b'>{fmt_brl(_pluggy_fatura)}</span></div>"
         if _pluggy_fatura is not None else ""
     )
-    _inv_strs = "".join([
-        f"<div style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;'>"
-        f"📈 {inv.get('tipo') or 'inv'}: <span style='color:#e8e8e0'>{fmt_brl(inv['valor'])}</span></div>"
-        for inv in _pluggy_inv_det
-    ]) if _pluggy_inv_det else (
-        f"<div style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;'>📦 rdb (acum.): <span style='color:#e8e8e0'>{fmt_brl(saldo_caixinha_txns)}</span></div>"
-        if saldo_caixinha_txns != 0 else ""
+    _cx_str = (
+        f"<div style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;'>📦 caixinha: <span style='color:#e8e8e0'>{fmt_brl(saldo_caixinha)}</span></div>"
+        if saldo_caixinha != 0 else ""
     )
     st.markdown(
         f"""<div style='display:flex;gap:1.5rem;margin:0.5rem 0 0.2rem;flex-wrap:wrap;'>
         <div style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;'>
             🏦 conta: <span style='color:#e8e8e0'>{fmt_brl(balamt_recente) if balamt_recente is not None else "—"}</span>
         </div>
-        {_inv_strs}
+        {_cx_str}
         {_fatura_str}
         {_atualizado_str}
         </div>""",
@@ -1052,7 +1051,7 @@ if df_saldos.empty:
 else:
     colors = get_colors()
 
-    # Caixinha acumulada
+    # Caixinha: histórico via transações RDB acumuladas + ponto atual do Pluggy
     caixinha_txns = df[df["descricao"].str.lower().str.contains(
         "aplicação rdb|aplicacao rdb|resgate rdb", na=False
     )].sort_values("data").copy()
@@ -1069,6 +1068,21 @@ else:
         saldos_sorted["networth"] = saldos_sorted["balamt"] + saldos_sorted["caixinha"]
     else:
         saldos_sorted["caixinha"] = 0.0
+
+    # Injeta ponto atual do Pluggy no final da série
+    if _pluggy_conta is not None:
+        import datetime as _dt
+        _hoje = pd.Timestamp(_dt.date.today())
+        _ponto_atual = pd.DataFrame([{
+            "data": _hoje,
+            "balamt": _pluggy_conta,
+            "caixinha": _pluggy_caixinha,
+            "networth": _pluggy_conta + _pluggy_caixinha - (_pluggy_fatura or 0),
+            "rendimento_conta": None,
+            "origem": "pluggy",
+        }])
+        saldos_sorted = pd.concat([saldos_sorted, _ponto_atual], ignore_index=True)
+        saldos_sorted = saldos_sorted.drop_duplicates(subset=["data"], keep="last").sort_values("data")
 
     nw_tab1, nw_tab2, nw_tab3 = st.tabs(["Evolução do patrimônio", "Rendimento mensal", "Rendimento acumulado"])
 
