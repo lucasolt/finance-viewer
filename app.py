@@ -589,6 +589,68 @@ def save_pref(chave: str, valor: str):
         {"chave": chave, "valor": valor}, on_conflict="chave"
     ).execute()
 
+# ── Categoria overrides ───────────────────────────────────────────────────────
+# Tabela Supabase: categoria_overrides
+#   descricao TEXT NOT NULL
+#   data      DATE NOT NULL DEFAULT '0001-01-01'  ← sentinela = "todas"
+#   categoria TEXT NOT NULL
+#   PRIMARY KEY (descricao, data)
+#
+# DDL:
+#   create table categoria_overrides (
+#     descricao text not null,
+#     data      date not null default '0001-01-01',
+#     categoria text not null,
+#     primary key (descricao, data)
+#   );
+
+_SENTINELA = "0001-01-01"  # data especial = override geral ("todas")
+
+@st.cache_data(ttl=60)
+def load_categoria_overrides() -> pd.DataFrame:
+    sb = get_supabase()
+    res = sb.table("categoria_overrides").select("*").execute()
+    if not res.data:
+        return pd.DataFrame(columns=["descricao", "data", "categoria"])
+    return pd.DataFrame(res.data)
+
+def save_categoria_override(descricao: str, categoria: str, data_str=None):
+    """data_str = 'YYYY-MM-DD' pra override individual, None pra todas."""
+    row = {
+        "descricao": descricao,
+        "categoria": categoria,
+        "data": data_str if data_str else _SENTINELA,
+    }
+    get_supabase().table("categoria_overrides").upsert(
+        row, on_conflict="descricao,data"
+    ).execute()
+    load_categoria_overrides.clear()
+
+def apply_categoria_overrides(df: pd.DataFrame, overrides: pd.DataFrame) -> pd.DataFrame:
+    """Aplica overrides ao df. Override específico (com data) tem precedência sobre geral."""
+    if overrides.empty or df.empty:
+        return df
+    df = df.copy()
+    df["_data_str"] = df["data"].dt.strftime("%Y-%m-%d")
+
+    # Overrides gerais (data == sentinela)
+    gerais = overrides[overrides["data"] == _SENTINELA].set_index("descricao")["categoria"].to_dict()
+    # Overrides específicos (data != sentinela)
+    especificos = {}
+    for _, row in overrides[overrides["data"] != _SENTINELA].iterrows():
+        especificos[(row["descricao"], row["data"])] = row["categoria"]
+
+    def resolve(row):
+        key_esp = (row["descricao"], row["_data_str"])
+        if key_esp in especificos:
+            return especificos[key_esp]
+        if row["descricao"] in gerais:
+            return gerais[row["descricao"]]
+        return row["categoria"]
+
+    df["categoria"] = df.apply(resolve, axis=1)
+    return df.drop(columns=["_data_str"])
+
 # ── Login ─────────────────────────────────────────────────────────────────────
 if "authed" not in st.session_state:
     st.session_state.authed = False
@@ -630,6 +692,8 @@ except Exception as e:
 df_saldos = load_saldos()
 saldo_pluggy = load_saldo_pluggy()
 prefs = load_prefs()
+df_cat_overrides = load_categoria_overrides()
+df = apply_categoria_overrides(df, df_cat_overrides)
 
 # ── Persistência diária do Pluggy no Supabase ─────────────────────────────────
 def save_caixinha(data: str, valor: float):
@@ -1339,11 +1403,9 @@ with tab4:
     })
 
     def style_row(row):
-        # reembolsados ficam cinza fraco em toda a linha
         if row["reembolsado"]:
             return ["color: #555"] * len(row)
         styles = [""] * len(row)
-        # cor no valor
         val_idx = list(row.index).index("Valor")
         if str(row["Valor"]).startswith("- "):
             styles[val_idx] = "color: #ff6b6b"
@@ -1352,13 +1414,99 @@ with tab4:
         return styles
 
     styled = show_display.style.apply(style_row, axis=1)
-    # esconde a coluna auxiliar reembolsado
     styled = styled.hide(axis="columns", subset=["reembolsado"])
 
-    st.dataframe(styled, width='stretch', height=480)
+    st.dataframe(styled, width='stretch', height=400)
     n_reemb = show_raw["reembolsado"].sum()
     if n_reemb > 0:
         st.markdown(f"<p style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;'>{n_reemb} transação(ões) em cinza = reembolso casado, neutralizado dos cálculos</p>", unsafe_allow_html=True)
     st.download_button("⬇ baixar transações (.xlsx)",
                        df_to_xlsx(show_raw.rename(columns={"data":"Data","descricao":"Descrição","categoria":"Categoria","valor":"Valor","origem":"Origem","fonte":"Fonte","reembolsado":"Reembolsado"})),
                        "transacoes.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+
+    # ── Editar categoria ──────────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### ✏️ editar categoria")
+
+    todas_cats = sorted(CATEGORY_COLORS.keys())
+
+    # Seleção da transação via índice
+    if show_raw.empty:
+        st.info("Nenhuma transação para exibir.")
+    else:
+        # Monta rótulo legível para o selectbox
+        def _row_label(i, row):
+            data_str = row["data"].strftime("%d/%m/%y") if hasattr(row["data"], "strftime") else str(row["data"])[:10]
+            desc = str(row["descricao"])[:40]
+            val  = fmt_brl_signed(row["valor"])
+            cat  = row["categoria"]
+            return f"{data_str} · {desc} · {val} · [{cat}]"
+
+        opcoes_labels = [_row_label(i, r) for i, r in show_raw.iterrows()]
+        opcoes_map    = {lbl: i for i, lbl in enumerate(opcoes_labels)}
+
+        sel_label = st.selectbox(
+            "selecione a transação",
+            options=opcoes_labels,
+            index=0,
+            key="tab4_sel_txn",
+            label_visibility="collapsed",
+        )
+        sel_idx = opcoes_map[sel_label]
+        sel_row = show_raw.iloc[sel_idx]
+
+        # Conta quantas transações têm a mesma descrição no df filtrado
+        desc_sel   = sel_row["descricao"]
+        data_sel   = sel_row["data"].strftime("%Y-%m-%d")
+        cat_atual  = sel_row["categoria"]
+        n_iguais   = (show_raw["descricao"] == desc_sel).sum()
+
+        col_cat, col_b1, col_b2 = st.columns([3, 1, 1])
+        with col_cat:
+            nova_cat = st.selectbox(
+                "nova categoria",
+                options=todas_cats,
+                index=todas_cats.index(cat_atual) if cat_atual in todas_cats else 0,
+                key="tab4_nova_cat",
+                label_visibility="collapsed",
+            )
+        with col_b1:
+            btn_esta = st.button("✅ só esta", use_container_width=True, key="btn_esta_txn")
+        with col_b2:
+            lbl_todas = f"🔁 todas ({n_iguais})" if n_iguais > 1 else "🔁 todas"
+            btn_todas = st.button(lbl_todas, use_container_width=True, key="btn_todas_txn",
+                                  disabled=(nova_cat == cat_atual))
+
+        if btn_esta:
+            if nova_cat == cat_atual:
+                st.info("Categoria já é essa.")
+            else:
+                try:
+                    save_categoria_override(desc_sel, nova_cat, data_str=data_sel)
+                    st.success(f"Categoria desta transação → **{nova_cat}**")
+                    load_categoria_overrides.clear()
+                    st.rerun()
+                except Exception as _e:
+                    st.error(f"Erro ao salvar: {_e}")
+
+        if btn_todas:
+            try:
+                save_categoria_override(desc_sel, nova_cat, data_str=None)
+                st.success(f"Todas as transações '{desc_sel[:40]}' → **{nova_cat}**")
+                load_categoria_overrides.clear()
+                st.rerun()
+            except Exception as _e:
+                st.error(f"Erro ao salvar: {_e}")
+
+        # Info sobre overrides ativos
+        if not df_cat_overrides.empty:
+            ov_desc = df_cat_overrides[df_cat_overrides["descricao"] == desc_sel]
+            if not ov_desc.empty:
+                with st.expander(f"overrides ativos para '{desc_sel[:40]}'", expanded=False):
+                    for _, ov in ov_desc.iterrows():
+                        escopo = f"data {ov['data']}" if ov["data"] != _SENTINELA else "todas"
+                        st.markdown(
+                            f"<span style='color:#888;font-size:0.8rem;font-family:DM Mono,monospace'>"
+                            f"{escopo} → <b style='color:#c8f060'>{ov['categoria']}</b></span>",
+                            unsafe_allow_html=True
+                        )
