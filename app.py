@@ -612,7 +612,10 @@ def load_categoria_overrides() -> pd.DataFrame:
     res = sb.table("categoria_overrides").select("*").execute()
     if not res.data:
         return pd.DataFrame(columns=["descricao", "data", "categoria"])
-    return pd.DataFrame(res.data)
+    df = pd.DataFrame(res.data)
+    # Mantém data como string pura — evita conversão datetime que quebraria a sentinela
+    df["data"] = df["data"].astype(str)
+    return df
 
 def save_categoria_override(descricao: str, categoria: str, data_str=None):
     """data_str = 'YYYY-MM-DD' pra override individual, None pra todas."""
@@ -1510,3 +1513,12 @@ with tab4:
                             f"{escopo} → <b style='color:#c8f060'>{ov['categoria']}</b></span>",
                             unsafe_allow_html=True
                         )
+
+        with st.expander("🔍 debug overrides", expanded=False):
+            st.write("**df_cat_overrides (todos):**")
+            st.dataframe(df_cat_overrides)
+            st.write(f"**descricao selecionada:** `{desc_sel}`")
+            st.write(f"**_SENTINELA:** `{_SENTINELA}`")
+            if not df_cat_overrides.empty:
+                st.write("**data dtype:**", df_cat_overrides["data"].dtype)
+                st.write("**match sentinela:**", (df_cat_overrides["data"] == _SENTINELA).tolist())
