@@ -1488,6 +1488,7 @@ with tab4:
                     save_categoria_override(desc_sel, nova_cat, data_str=data_sel)
                     st.success(f"Categoria desta transação → **{nova_cat}**")
                     load_categoria_overrides.clear()
+                    load_transactions.clear()
                     st.rerun()
                 except Exception as _e:
                     st.error(f"Erro ao salvar: {_e}")
@@ -1497,6 +1498,7 @@ with tab4:
                 save_categoria_override(desc_sel, nova_cat, data_str=None)
                 st.success(f"Todas as transações '{desc_sel[:40]}' → **{nova_cat}**")
                 load_categoria_overrides.clear()
+                load_transactions.clear()
                 st.rerun()
             except Exception as _e:
                 st.error(f"Erro ao salvar: {_e}")
@@ -1522,3 +1524,7 @@ with tab4:
             if not df_cat_overrides.empty:
                 st.write("**data dtype:**", df_cat_overrides["data"].dtype)
                 st.write("**match sentinela:**", (df_cat_overrides["data"] == _SENTINELA).tolist())
+            # mostra todas as linhas do df global com essa descrição e sua categoria resolvida
+            hits = df[df["descricao"] == desc_sel][["data","descricao","categoria"]].head(10)
+            st.write(f"**ocorrências no df global ({len(hits)}):**")
+            st.dataframe(hits)
