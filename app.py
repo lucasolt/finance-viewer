@@ -406,8 +406,73 @@ def load_from_pluggy() -> pd.DataFrame:
 
     df = df.sort_values("data").reset_index(drop=True)
     df["id"] = df.index
-    df = detectar_reembolsos(df)
     return df
+
+@st.cache_data(ttl=300)
+def load_from_supabase_historico(antes_de: pd.Timestamp) -> pd.DataFrame:
+    """Carrega do Supabase apenas as transações anteriores ao início do range
+    do Pluggy, evitando sobreposição."""
+    sb = get_supabase()
+    corte = antes_de.strftime("%Y-%m-%d")
+    all_rows = []
+    page_size = 1000
+    offset = 0
+    while True:
+        res = (
+            sb.table("transacoes")
+            .select("*")
+            .lt("data", corte)
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+        if not res.data:
+            break
+        all_rows.extend(res.data)
+        if len(res.data) < page_size:
+            break
+        offset += page_size
+    if not all_rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(all_rows)
+    df["data"] = pd.to_datetime(df["data"])
+    df["mes"] = df["data"].dt.to_period("M").astype(str)
+    # Re-aplica categorização com a lógica atual (ignora a coluna salva)
+    df["categoria"] = df.apply(
+        lambda r: guess_category(r["descricao"], r["valor"]), axis=1
+    )
+    if "reembolsado" not in df.columns:
+        df["reembolsado"] = False
+    return df
+
+def load_transactions() -> pd.DataFrame:
+    """Fonte combinada: Supabase (histórico) + Pluggy (recente)."""
+    df_pluggy = load_from_pluggy()
+
+    if df_pluggy.empty:
+        # Sem Pluggy, carrega tudo do Supabase
+        df_hist = load_from_supabase_historico(pd.Timestamp("2100-01-01"))
+        if df_hist.empty:
+            return pd.DataFrame()
+        df_hist = detectar_reembolsos(df_hist)
+        return df_hist
+
+    pluggy_inicio = df_pluggy["data"].min()
+
+    df_hist = load_from_supabase_historico(pluggy_inicio)
+
+    if df_hist.empty:
+        df_pluggy = detectar_reembolsos(df_pluggy)
+        return df_pluggy
+
+    # Alinha colunas antes de concatenar (Supabase pode ter colunas extras como 'id' int)
+    cols_comuns = ["data", "descricao", "valor", "categoria", "mes", "origem"]
+    df_hist_clean = df_hist[cols_comuns].copy()
+    df_pluggy_clean = df_pluggy[cols_comuns].copy()
+
+    df_combined = pd.concat([df_hist_clean, df_pluggy_clean], ignore_index=True)
+    df_combined = df_combined.sort_values("data").reset_index(drop=True)
+    df_combined = detectar_reembolsos(df_combined)
+    return df_combined
 
 
 # ── Saldos ───────────────────────────────────────────────────────────────────
@@ -463,9 +528,9 @@ if not st.session_state.authed:
 
 # ── Load data + prefs ────────────────────────────────────────────────────────
 try:
-    df = load_from_pluggy()
+    df = load_transactions()
 except Exception as e:
-    st.error(f"Erro ao buscar dados do Pluggy: {e}")
+    st.error(f"Erro ao buscar dados: {e}")
     import traceback
     st.code(traceback.format_exc())
     st.stop()
@@ -493,6 +558,7 @@ with col_h1:
 with col_h2:
     if st.button("🔄 atualizar", width='stretch'):
         load_from_pluggy.clear()
+        load_from_supabase_historico.clear()
         st.rerun()
 st.divider()
 
