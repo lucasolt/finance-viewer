@@ -544,6 +544,8 @@ def load_saldos() -> pd.DataFrame:
     df["data"] = pd.to_datetime(df["data"])
     if "rendimento_conta" not in df.columns:
         df["rendimento_conta"] = None
+    if "rendimento_caixinha" not in df.columns:
+        df["rendimento_caixinha"] = None
     return df.sort_values("data")
 
 # ── Preferences ──────────────────────────────────────────────────────────────
@@ -1194,54 +1196,96 @@ else:
     with nw_tab2:
         rend = saldos_sorted[saldos_sorted["rendimento_conta"].notna()].copy()
         if rend.empty:
-            st.info("Nenhum dado de rendimento ainda — re-faça o upload dos extratos para popular.")
+            st.info("Nenhum dado de rendimento ainda.")
         else:
+            # garante coluna caixinha
+            if "rendimento_caixinha" not in rend.columns:
+                rend["rendimento_caixinha"] = 0.0
+            rend["rendimento_caixinha"] = rend["rendimento_caixinha"].fillna(0.0)
+
             fig_rend = go.Figure()
             fig_rend.add_bar(
                 x=rend["data"], y=rend["rendimento_conta"],
-                marker_color=colors[0], marker_line_width=0,
-                hovertemplate="<b>%{x|%Y-%m-%d}</b><br>Rendimento: R$ %{y:,.2f}<extra></extra>",
+                name="Conta", marker_color=colors[0], marker_line_width=0,
+                hovertemplate="<b>%{x|%Y-%m-%d}</b><br>Conta: R$ %{y:,.2f}<extra></extra>",
             )
+            if rend["rendimento_caixinha"].sum() > 0:
+                fig_rend.add_bar(
+                    x=rend["data"], y=rend["rendimento_caixinha"],
+                    name="Caixinha", marker_color=colors[2], marker_line_width=0,
+                    hovertemplate="<b>%{x|%Y-%m-%d}</b><br>Caixinha: R$ %{y:,.2f}<extra></extra>",
+                )
             fig_rend.update_layout(
-                **build_plotly_theme(), height=380, bargap=0.3,
-                xaxis_title=None, yaxis_title="R$", showlegend=False,
+                **build_plotly_theme(), height=380, bargap=0.3, barmode="stack",
+                xaxis_title=None, yaxis_title="R$",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=11)),
             )
             st.plotly_chart(fig_rend, width='stretch')
 
-            total_rend = rend["rendimento_conta"].sum()
-            media_rend = rend["rendimento_conta"].mean()
-            rc1, rc2 = st.columns(2)
-            rc1.metric("Total rendido (conta)", fmt_brl(total_rend))
-            rc2.metric("Média mensal", fmt_brl(media_rend))
+            total_conta   = rend["rendimento_conta"].sum()
+            total_caixinha = rend["rendimento_caixinha"].sum()
+            total_geral   = total_conta + total_caixinha
+            media_geral   = (rend["rendimento_conta"] + rend["rendimento_caixinha"]).mean()
+            rc1, rc2, rc3, rc4 = st.columns(4)
+            rc1.metric("Total conta",    fmt_brl(total_conta))
+            rc2.metric("Total caixinha", fmt_brl(total_caixinha))
+            rc3.metric("Total geral",    fmt_brl(total_geral))
+            rc4.metric("Média mensal",   fmt_brl(media_geral))
 
-            tbl_r = rend[["data","rendimento_conta"]].copy()
-            tbl_r.columns = ["Data","Rendimento"]
+            tbl_r = rend[["data","rendimento_conta","rendimento_caixinha"]].copy()
+            tbl_r["total"] = tbl_r["rendimento_conta"] + tbl_r["rendimento_caixinha"]
+            tbl_r.columns = ["Data","Conta","Caixinha","Total"]
             tbl_r["Data"] = tbl_r["Data"].dt.date
-            tbl_r["Rendimento"] = tbl_r["Rendimento"].map(fmt_brl)
+            for col in ["Conta","Caixinha","Total"]:
+                tbl_r[col] = tbl_r[col].map(fmt_brl)
             st.dataframe(tbl_r.sort_values("Data", ascending=False).reset_index(drop=True),
                          width='stretch', height=280)
 
     with nw_tab3:
         rend = saldos_sorted[saldos_sorted["rendimento_conta"].notna()].copy()
         if rend.empty:
-            st.info("Nenhum dado de rendimento ainda — re-faça o upload dos extratos para popular.")
+            st.info("Nenhum dado de rendimento ainda.")
         else:
             rend = rend.sort_values("data")
-            rend["rendimento_acum"] = rend["rendimento_conta"].cumsum()
+            if "rendimento_caixinha" not in rend.columns:
+                rend["rendimento_caixinha"] = 0.0
+            rend["rendimento_caixinha"] = rend["rendimento_caixinha"].fillna(0.0)
+            rend["acum_conta"]    = rend["rendimento_conta"].cumsum()
+            rend["acum_caixinha"] = rend["rendimento_caixinha"].cumsum()
+            rend["acum_total"]    = rend["acum_conta"] + rend["acum_caixinha"]
+
             fig_acum = go.Figure()
             fig_acum.add_scatter(
-                x=rend["data"], y=rend["rendimento_acum"],
-                name="Rendimento acumulado", mode="lines+markers",
+                x=rend["data"], y=rend["acum_total"],
+                name="Total", mode="lines+markers",
                 line=dict(color=colors[0], width=2), marker=dict(size=6),
                 fill="tozeroy", fillcolor="rgba(200,240,96,0.12)",
-                hovertemplate="<b>%{x|%Y-%m-%d}</b><br>Acumulado: R$ %{y:,.2f}<extra></extra>",
+                hovertemplate="<b>%{x|%Y-%m-%d}</b><br>Total: R$ %{y:,.2f}<extra></extra>",
             )
+            fig_acum.add_scatter(
+                x=rend["data"], y=rend["acum_conta"],
+                name="Conta", mode="lines+markers",
+                line=dict(color=colors[1], width=2, dash="dot"), marker=dict(size=5),
+                hovertemplate="<b>%{x|%Y-%m-%d}</b><br>Conta: R$ %{y:,.2f}<extra></extra>",
+            )
+            if rend["acum_caixinha"].sum() > 0:
+                fig_acum.add_scatter(
+                    x=rend["data"], y=rend["acum_caixinha"],
+                    name="Caixinha", mode="lines+markers",
+                    line=dict(color=colors[2], width=2, dash="dash"), marker=dict(size=5),
+                    hovertemplate="<b>%{x|%Y-%m-%d}</b><br>Caixinha: R$ %{y:,.2f}<extra></extra>",
+                )
             fig_acum.update_layout(
                 **build_plotly_theme(), height=380,
-                xaxis_title=None, yaxis_title="R$", showlegend=False,
+                xaxis_title=None, yaxis_title="R$",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=11)),
             )
             st.plotly_chart(fig_acum, width='stretch')
-            st.metric("Total acumulado", fmt_brl(rend["rendimento_acum"].iloc[-1]))
+
+            a1, a2, a3 = st.columns(3)
+            a1.metric("Acumulado conta",    fmt_brl(rend["acum_conta"].iloc[-1]))
+            a2.metric("Acumulado caixinha", fmt_brl(rend["acum_caixinha"].iloc[-1]))
+            a3.metric("Acumulado total",    fmt_brl(rend["acum_total"].iloc[-1]))
 
 with tab4:
     # aplica filtro de tipo mas mantém reembolsados visíveis
