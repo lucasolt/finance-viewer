@@ -76,7 +76,36 @@ COLOR_SCHEMES = {
                      "#98a2b0","#7e8e98","#b4bec8","#646e7a","#c8d0d8","#505860","#8a949e","#d0d8e0"],
 }
 
-# ── PluggyAPI ───────────────────────────────────────────────────────────────────────
+# ── Cores fixas por categoria (baseado no tema Lima Escuro) ───────────────────
+CATEGORY_COLORS = {
+    "iFood":                 "#8aaa20",  # lima escuro
+    "Alimentação & Mercado": "#6a8a10",  # lima mais escuro
+    "Vícios & Conveniência": "#aa8820",  # âmbar escuro
+    "Transporte":            "#208aaa",  # azul petróleo
+    "Saúde":                 "#20aa88",  # verde água
+    "Compras":               "#aa2088",  # magenta escuro
+    "Assinaturas":           "#8820aa",  # roxo escuro
+    "Lazer":                 "#aa5020",  # laranja escuro
+    "Telecom":               "#5020aa",  # índigo
+    "Vestuário":             "#208820",  # verde escuro
+    "Serviços":              "#2050aa",  # azul escuro
+    "Impostos":              "#aa2020",  # vermelho escuro
+    "Profissional":          "#208050",  # verde musgo
+    "Investimento":          "#50aa20",  # verde limão
+    "Transferências":        "#607080",  # cinza azulado
+    "Bolsa Residência":      "#20aa50",  # verde esmeralda
+    "Pagamento de Fatura":   "#404040",  # cinza escuro
+    "Crédito de Fatura":     "#505850",  # cinza esverdeado
+    "Outros":                "#505050",  # cinza neutro
+}
+
+def cat_color(categoria: str) -> str:
+    return CATEGORY_COLORS.get(categoria, "#707070")
+
+def cat_colors_list(categorias: list) -> list:
+    return [cat_color(c) for c in categorias]
+
+
 from pluggy_client import PluggyClient, transactions_to_df
 
 @st.cache_resource
@@ -309,7 +338,7 @@ def guess_category(desc: str, valor: float = 0.0, pluggy_cat: str = None) -> str
         if kw in d:
             return cat
     if re.search(r"•{3}\.\d{3}\.\d{3}-•{2}", desc):
-        return "Transferência Pessoal"
+        return "Transferências"
 
     # Fallback: usa categoria do Pluggy traduzida, se disponível
     if pluggy_cat and pluggy_cat in PLUGGY_CAT_FALLBACK:
@@ -1004,14 +1033,18 @@ with tab2:
         with col_a:
             fig_bar = go.Figure()
             fig_bar.add_bar(x=por_cat["valor_abs"], y=por_cat["categoria"],
-                            orientation="h", marker_color=get_accent(), marker_line_width=0,
+                            orientation="h",
+                            marker_color=cat_colors_list(por_cat["categoria"].tolist()),
+                            marker_line_width=0,
                             hovertemplate="<b>%{y}</b><br>R$ %{x:,.2f}<extra></extra>")
             fig_bar.update_layout(**build_plotly_theme(), height=380,
                                   xaxis_title="R$", yaxis_title=None, showlegend=False)
             st.plotly_chart(fig_bar, width='stretch')
         with col_b:
             fig_pie = px.pie(por_cat, values="valor_abs", names="categoria",
-                             hole=0.55, color_discrete_sequence=get_colors())
+                             hole=0.55,
+                             color="categoria",
+                             color_discrete_map=CATEGORY_COLORS)
             fig_pie.update_traces(textfont_size=11,
                 hovertemplate="<b>%{label}</b><br>R$ %{value:,.2f}<br>%{percent}<extra></extra>")
             fig_pie.update_layout(**build_plotly_theme(), height=380,
@@ -1034,20 +1067,19 @@ with tab3:
         # order gastos categories by mean — largest at bottom
         gas_order = (gas_cat.groupby("categoria")["valor_abs"]
                      .median().sort_values(ascending=False).index.tolist())
-        colors = get_colors()
         fig_ev = go.Figure()
         # gastos (negative stack) — largest mean at bottom = first added
-        for i, cat in enumerate(gas_order):
+        for cat in gas_order:
             sub = gas_cat[gas_cat["categoria"] == cat]
             fig_ev.add_bar(x=sub["mes"], y=-sub["valor_abs"], name=f"↓ {cat}",
-                           marker_color=colors[i % len(colors)], opacity=0.85,
+                           marker_color=cat_color(cat), opacity=0.85,
                            hovertemplate=f"<b>%{{x}}</b><br>{cat}<br>R$ %{{customdata:,.2f}}<extra></extra>",
                            customdata=sub["valor_abs"])
         # receitas (positive stack)
-        for i, cat in enumerate(rec_cat["categoria"].unique()):
+        for cat in rec_cat["categoria"].unique():
             sub = rec_cat[rec_cat["categoria"] == cat]
             fig_ev.add_bar(x=sub["mes"], y=sub["valor"], name=f"↑ {cat}",
-                           marker_color=colors[(i + 4) % len(colors)], opacity=0.6,
+                           marker_color=cat_color(cat), opacity=0.6,
                            hovertemplate=f"<b>%{{x}}</b><br>{cat}<br>R$ %{{y:,.2f}}<extra></extra>")
         fig_ev.add_hline(y=0, line_color="#444", line_width=1)
         fig_ev.update_layout(**build_plotly_theme(), height=460, bargap=0.2, barmode="relative",
@@ -1060,16 +1092,15 @@ with tab3:
         # largest mean at bottom = added first
         cat_order = (por_mes_cat.groupby("categoria")["valor_abs"]
                      .median().sort_values(ascending=False).index.tolist())
-        colors = get_colors()
         fig_ev = go.Figure()
-        for i, cat in enumerate(cat_order):
+        for cat in cat_order:
             sub = por_mes_cat[por_mes_cat["categoria"] == cat]
             # fill missing months with 0
             sub = (pd.DataFrame({"mes": meses_u})
                    .merge(sub[["mes","valor_abs"]], on="mes", how="left")
                    .fillna(0))
             fig_ev.add_bar(x=sub["mes"], y=sub["valor_abs"], name=cat,
-                           marker_color=colors[i % len(colors)],
+                           marker_color=cat_color(cat),
                            hovertemplate=f"<b>%{{x}}</b><br>{cat}<br>R$ %{{y:,.2f}}<extra></extra>")
         fig_ev.update_layout(**build_plotly_theme(), height=420, bargap=0.25,
                              barmode="stack",
