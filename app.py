@@ -510,7 +510,8 @@ def load_saldo_pluggy() -> dict:
                 resultado["fatura_cartao"] = balance
 
         # Investimentos: usa amountWithdrawal (líquido de IR) quando disponível
-        for inv in client.get_investments(item_id):
+        investments_raw = client._get("/investments", {"itemId": item_id}).get("results", [])
+        for inv in investments_raw:
             if inv.get("status") != "ACTIVE":
                 continue
             valor = inv.get("amountWithdrawal") or inv.get("balance") or 0.0
