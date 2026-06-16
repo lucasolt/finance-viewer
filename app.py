@@ -78,7 +78,7 @@ COLOR_SCHEMES = {
 
 # ── Cores fixas por categoria (baseado no tema Lima Escuro) ───────────────────
 CATEGORY_COLORS = {
-    "iFood":                 "#cc2222",  # vermelho iFood
+    "iFood":                 "#8a1616",  # vermelho iFood
     "Alimentação & Mercado": "#6a8a10",  # lima mais escuro
     "Vícios & Conveniência": "#aa8820",  # âmbar escuro
     "Transporte":            "#208aaa",  # azul petróleo
