@@ -599,19 +599,58 @@ df_saldos = load_saldos()
 saldo_pluggy = load_saldo_pluggy()
 prefs = load_prefs()
 
-# Auto-persiste o saldo Pluggy no Supabase pra construir histórico
-# (roda uma vez por sessão, não a cada rerun)
+# ── Persistência diária do Pluggy no Supabase ─────────────────────────────────
+def save_caixinha(data: str, valor: float):
+    get_supabase().table("caixinha_historico").upsert(
+        {"data": data, "valor": valor}, on_conflict="data"
+    ).execute()
+
+def save_fatura(data: str, valor: float):
+    get_supabase().table("fatura_historico").upsert(
+        {"data": data, "valor": valor}, on_conflict="data"
+    ).execute()
+
+@st.cache_data(ttl=300)
+def load_caixinha_historico() -> pd.DataFrame:
+    res = get_supabase().table("caixinha_historico").select("*").order("data").execute()
+    if not res.data:
+        return pd.DataFrame(columns=["data", "valor"])
+    df = pd.DataFrame(res.data)
+    df["data"] = pd.to_datetime(df["data"])
+    return df
+
+@st.cache_data(ttl=300)
+def load_fatura_historico() -> pd.DataFrame:
+    res = get_supabase().table("fatura_historico").select("*").order("data").execute()
+    if not res.data:
+        return pd.DataFrame(columns=["data", "valor"])
+    df = pd.DataFrame(res.data)
+    df["data"] = pd.to_datetime(df["data"])
+    return df
+
+# Roda uma vez por sessão
 if saldo_pluggy.get("conta") is not None and "saldo_pluggy_salvo" not in st.session_state:
     import datetime as _dt
     _hoje = _dt.date.today().isoformat()
-    _info = {"balamt": saldo_pluggy["conta"]}
     try:
-        save_saldo(_hoje, _info, "pluggy")
+        # Conta corrente → tabela saldos (existente)
+        save_saldo(_hoje, {"balamt": saldo_pluggy["conta"]}, "pluggy")
         load_saldos.clear()
         df_saldos = load_saldos()
+        # Caixinha (CDB) → tabela nova
+        if saldo_pluggy.get("caixinha"):
+            save_caixinha(_hoje, saldo_pluggy["caixinha"])
+            load_caixinha_historico.clear()
+        # Fatura do cartão → tabela nova
+        if saldo_pluggy.get("fatura_cartao") is not None:
+            save_fatura(_hoje, saldo_pluggy["fatura_cartao"])
+            load_fatura_historico.clear()
     except Exception:
         pass
     st.session_state["saldo_pluggy_salvo"] = True
+
+df_caixinha_hist = load_caixinha_historico()
+df_fatura_hist   = load_fatura_historico()
 
 
 # Apply saved prefs to session state (only first run)
@@ -636,6 +675,8 @@ with col_h2:
         load_from_pluggy.clear()
         load_from_supabase_historico.clear()
         load_saldo_pluggy.clear()
+        load_caixinha_historico.clear()
+        load_fatura_historico.clear()
         st.rerun()
 st.divider()
 
@@ -1047,36 +1088,55 @@ if preset == "Barra deslizante" and len(_meses_disp) > 1:
 st.divider()
 st.markdown("<p style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:0.08em;'>Evolução do patrimônio</p>", unsafe_allow_html=True)
 if df_saldos.empty:
-    st.info("Nenhum dado de saldo ainda — faça upload dos extratos.")
+    st.info("Nenhum dado de saldo ainda.")
 else:
     colors = get_colors()
 
-    # Caixinha: histórico via transações RDB acumuladas + ponto atual do Pluggy
-    caixinha_txns = df[df["descricao"].str.lower().str.contains(
-        "aplicação rdb|aplicacao rdb|resgate rdb", na=False
-    )].sort_values("data").copy()
-    caixinha_txns["caixinha_acum"] = (-caixinha_txns["valor"]).cumsum()
-
     saldos_sorted = df_saldos.sort_values("data").copy()
-    saldos_sorted["networth"] = saldos_sorted["balamt"]
 
-    if not caixinha_txns.empty:
-        def caixinha_em(data):
-            antes = caixinha_txns[caixinha_txns["data"] <= data]
-            return float(antes["caixinha_acum"].iloc[-1]) if not antes.empty else 0.0
-        saldos_sorted["caixinha"] = saldos_sorted["data"].apply(caixinha_em)
-        saldos_sorted["networth"] = saldos_sorted["balamt"] + saldos_sorted["caixinha"]
+    # Caixinha: tabela nova tem prioridade; fallback via transações RDB acumuladas
+    if not df_caixinha_hist.empty:
+        saldos_sorted = saldos_sorted.merge(
+            df_caixinha_hist[["data", "valor"]].rename(columns={"valor": "caixinha"}),
+            on="data", how="left"
+        )
+        saldos_sorted["caixinha"] = saldos_sorted["caixinha"].fillna(0.0)
     else:
-        saldos_sorted["caixinha"] = 0.0
+        caixinha_txns = df[df["descricao"].str.lower().str.contains(
+            "aplicação rdb|aplicacao rdb|resgate rdb", na=False
+        )].sort_values("data").copy()
+        if not caixinha_txns.empty:
+            caixinha_txns["caixinha_acum"] = (-caixinha_txns["valor"]).cumsum()
+            def caixinha_em(data):
+                antes = caixinha_txns[caixinha_txns["data"] <= data]
+                return float(antes["caixinha_acum"].iloc[-1]) if not antes.empty else 0.0
+            saldos_sorted["caixinha"] = saldos_sorted["data"].apply(caixinha_em)
+        else:
+            saldos_sorted["caixinha"] = 0.0
 
-    # Injeta ponto atual do Pluggy no final da série
+    # Fatura
+    if not df_fatura_hist.empty:
+        saldos_sorted = saldos_sorted.merge(
+            df_fatura_hist[["data", "valor"]].rename(columns={"valor": "fatura"}),
+            on="data", how="left"
+        )
+        saldos_sorted["fatura"] = saldos_sorted["fatura"].fillna(0.0)
+    else:
+        saldos_sorted["fatura"] = 0.0
+
+    saldos_sorted["networth"] = (
+        saldos_sorted["balamt"] + saldos_sorted["caixinha"] - saldos_sorted["fatura"]
+    )
+
+    # Injeta ponto atual do Pluggy
     if _pluggy_conta is not None:
-        import datetime as _dt
-        _hoje = pd.Timestamp(_dt.date.today())
+        import datetime as _dt2
+        _hoje_ts = pd.Timestamp(_dt2.date.today())
         _ponto_atual = pd.DataFrame([{
-            "data": _hoje,
+            "data": _hoje_ts,
             "balamt": _pluggy_conta,
             "caixinha": _pluggy_caixinha,
+            "fatura": _pluggy_fatura or 0.0,
             "networth": _pluggy_conta + _pluggy_caixinha - (_pluggy_fatura or 0),
             "rendimento_conta": None,
             "origem": "pluggy",
@@ -1104,9 +1164,17 @@ else:
         if saldos_sorted["caixinha"].sum() != 0:
             fig_nw.add_scatter(
                 x=saldos_sorted["data"], y=saldos_sorted["caixinha"],
-                name="Caixinha (aprox.)", mode="lines+markers",
+                name="Caixinha", mode="lines+markers",
                 line=dict(color=colors[2], width=2, dash="dash"), marker=dict(size=5),
                 hovertemplate="<b>%{x|%Y-%m-%d}</b><br>Caixinha: R$ %{y:,.2f}<extra></extra>",
+            )
+        if saldos_sorted["fatura"].sum() != 0:
+            fig_nw.add_scatter(
+                x=saldos_sorted["data"], y=-saldos_sorted["fatura"],
+                name="Fatura (−)", mode="lines+markers",
+                line=dict(color=colors[3], width=1, dash="dot"), marker=dict(size=4),
+                hovertemplate="<b>%{x|%Y-%m-%d}</b><br>Fatura: R$ %{customdata:,.2f}<extra></extra>",
+                customdata=saldos_sorted["fatura"],
             )
         fig_nw.update_layout(
             **build_plotly_theme(), height=420,
@@ -1115,10 +1183,10 @@ else:
         )
         st.plotly_chart(fig_nw, width='stretch')
 
-        tbl = saldos_sorted[["data","balamt","caixinha","networth"]].copy()
-        tbl.columns = ["Data","Conta","Caixinha","Networth"]
+        tbl = saldos_sorted[["data","balamt","caixinha","fatura","networth"]].copy()
+        tbl.columns = ["Data","Conta","Caixinha","Fatura","Networth"]
         tbl["Data"] = tbl["Data"].dt.date
-        for col in ["Conta","Caixinha","Networth"]:
+        for col in ["Conta","Caixinha","Fatura","Networth"]:
             tbl[col] = tbl[col].map(fmt_brl)
         st.dataframe(tbl.sort_values("Data", ascending=False).reset_index(drop=True),
                      width='stretch', height=280)
