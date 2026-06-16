@@ -1488,7 +1488,6 @@ with tab4:
                     save_categoria_override(desc_sel, nova_cat, data_str=data_sel)
                     st.success(f"Categoria desta transação → **{nova_cat}**")
                     load_categoria_overrides.clear()
-                    load_transactions.clear()
                     st.rerun()
                 except Exception as _e:
                     st.error(f"Erro ao salvar: {_e}")
@@ -1498,7 +1497,6 @@ with tab4:
                 save_categoria_override(desc_sel, nova_cat, data_str=None)
                 st.success(f"Todas as transações '{desc_sel[:40]}' → **{nova_cat}**")
                 load_categoria_overrides.clear()
-                load_transactions.clear()
                 st.rerun()
             except Exception as _e:
                 st.error(f"Erro ao salvar: {_e}")
