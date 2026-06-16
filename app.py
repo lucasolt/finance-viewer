@@ -1170,11 +1170,11 @@ else:
             )
         if saldos_sorted["fatura"].sum() != 0:
             fig_nw.add_scatter(
-                x=saldos_sorted["data"], y=-saldos_sorted["fatura"],
-                name="Fatura (−)", mode="lines+markers",
-                line=dict(color=colors[3], width=1, dash="dot"), marker=dict(size=4),
-                hovertemplate="<b>%{x|%Y-%m-%d}</b><br>Fatura: R$ %{customdata:,.2f}<extra></extra>",
-                customdata=saldos_sorted["fatura"],
+                x=saldos_sorted["data"], y=saldos_sorted["fatura"],
+                name="Fatura cartão", mode="lines+markers",
+                line=dict(color="#ff4444", width=2, dash="dashdot"),
+                marker=dict(size=5, symbol="x", color="#ff4444"),
+                hovertemplate="<b>%{x|%Y-%m-%d}</b><br>Fatura: R$ %{y:,.2f}<extra></extra>",
             )
         fig_nw.update_layout(
             **build_plotly_theme(), height=420,
