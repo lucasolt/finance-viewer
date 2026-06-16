@@ -387,7 +387,7 @@ def load_from_pluggy() -> pd.DataFrame:
     df_raw = pd.concat(frames, ignore_index=True).drop_duplicates(subset=["id"])
 
     df = pd.DataFrame()
-    df["data"] = pd.to_datetime(df_raw["date"])
+    df["data"] = pd.to_datetime(df_raw["date"], utc=True).dt.tz_localize(None)
     df["descricao"] = df_raw["description"]
     # Sinal: na conta (Nu Pagamentos) o sinal do Pluggy já segue a convenção
     # (CREDIT positivo = receita, DEBIT negativo = gasto). No cartão
