@@ -135,6 +135,7 @@ def build_plotly_theme() -> dict:
 
 CATEGORY_MAP = {
     # iFood
+    "ifd *zamp" : "iFood",
     # Vicios
     "tabarcaria": "Vícios & Conveniência",
     "trinca tabarcaria": "Vícios & Conveniência",
@@ -203,7 +204,7 @@ CATEGORY_MAP = {
     "disney": "Assinaturas",
     "globoplay": "Assinaturas",
     "tinder" : "Assinaturas",
-    #"claude" : "Assinaturas",
+    "claude" : "Assinaturas",
     "subscription" : "Assinaturas",
     
     # Telecom
