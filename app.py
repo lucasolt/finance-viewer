@@ -436,27 +436,29 @@ def load_from_supabase_historico(antes_de: pd.Timestamp) -> pd.DataFrame:
     df = pd.DataFrame(all_rows)
     df["data"] = pd.to_datetime(df["data"])
     df["mes"] = df["data"].dt.to_period("M").astype(str)
-    # Re-aplica categorização com a lógica atual (ignora a coluna salva)
     df["categoria"] = df.apply(
         lambda r: guess_category(r["descricao"], r["valor"]), axis=1
     )
     if "reembolsado" not in df.columns:
         df["reembolsado"] = False
+    df["fonte"] = "supabase"
     return df
 
 def load_transactions() -> pd.DataFrame:
-    """Fonte combinada: Supabase (histórico) + Pluggy (recente)."""
+    """Fonte combinada: Supabase (histórico) + Pluggy (recente).
+    Retorna df com coluna 'fonte' = 'supabase' | 'pluggy'."""
     df_pluggy = load_from_pluggy()
 
     if df_pluggy.empty:
-        # Sem Pluggy, carrega tudo do Supabase
         df_hist = load_from_supabase_historico(pd.Timestamp("2100-01-01"))
         if df_hist.empty:
             return pd.DataFrame()
+        df_hist["fonte"] = "supabase"
         df_hist = detectar_reembolsos(df_hist)
         return df_hist
 
     pluggy_inicio = df_pluggy["data"].min()
+    df_pluggy["fonte"] = "pluggy"
 
     df_hist = load_from_supabase_historico(pluggy_inicio)
 
@@ -464,15 +466,14 @@ def load_transactions() -> pd.DataFrame:
         df_pluggy = detectar_reembolsos(df_pluggy)
         return df_pluggy
 
-    # Alinha colunas antes de concatenar (Supabase pode ter colunas extras como 'id' int)
-    cols_comuns = ["data", "descricao", "valor", "categoria", "mes", "origem"]
-    df_hist_clean = df_hist[cols_comuns].copy()
-    df_pluggy_clean = df_pluggy[cols_comuns].copy()
+    cols_comuns = ["data", "descricao", "valor", "categoria", "mes", "origem", "fonte"]
+    df_hist_clean = df_hist[[c for c in cols_comuns if c in df_hist.columns]].copy()
+    df_pluggy_clean = df_pluggy[[c for c in cols_comuns if c in df_pluggy.columns]].copy()
 
     df_combined = pd.concat([df_hist_clean, df_pluggy_clean], ignore_index=True)
     df_combined = df_combined.sort_values("data").reset_index(drop=True)
     df_combined = detectar_reembolsos(df_combined)
-    return df_combined
+    return df_combined, pluggy_inicio, len(df_hist_clean), len(df_pluggy_clean)
 
 
 # ── Saldos ───────────────────────────────────────────────────────────────────
@@ -528,7 +529,18 @@ if not st.session_state.authed:
 
 # ── Load data + prefs ────────────────────────────────────────────────────────
 try:
-    df = load_transactions()
+    result = load_transactions()
+    if isinstance(result, tuple):
+        df, _pluggy_inicio, _n_hist, _n_pluggy = result
+        _load_debug = {
+            "pluggy_inicio": _pluggy_inicio,
+            "n_supabase": _n_hist,
+            "n_pluggy": _n_pluggy,
+            "n_total": len(df),
+        }
+    else:
+        df = result
+        _load_debug = None
 except Exception as e:
     st.error(f"Erro ao buscar dados: {e}")
     import traceback
@@ -561,6 +573,34 @@ with col_h2:
         load_from_supabase_historico.clear()
         st.rerun()
 st.divider()
+
+# ── Debug de fontes ───────────────────────────────────────────────────────────
+with st.expander("🔍 diagnóstico de fontes", expanded=False):
+    if _load_debug:
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Pluggy início", str(_load_debug["pluggy_inicio"].date()))
+        c2.metric("Supabase (histórico)", _load_debug["n_supabase"])
+        c3.metric("Pluggy (recente)", _load_debug["n_pluggy"])
+        c4.metric("Total combinado", _load_debug["n_total"])
+    else:
+        st.info("Apenas uma fonte ativa (sem combinação).")
+
+    if not df.empty and "fonte" in df.columns:
+        st.markdown("**Distribuição por fonte e mês:**")
+        pivot = (
+            df.groupby(["mes", "fonte"])
+            .size()
+            .unstack(fill_value=0)
+            .sort_index()
+        )
+        st.dataframe(pivot, use_container_width=True)
+
+        st.markdown("**Datas extremas por fonte:**")
+        extremos = df.groupby("fonte")["data"].agg(["min", "max"]).reset_index()
+        extremos.columns = ["fonte", "mais antiga", "mais recente"]
+        extremos["mais antiga"] = extremos["mais antiga"].dt.date
+        extremos["mais recente"] = extremos["mais recente"].dt.date
+        st.dataframe(extremos, use_container_width=True)
 
 if df.empty:
     st.markdown("""
@@ -1032,7 +1072,10 @@ with tab4:
         show_raw = dff_tabela[dff_tabela["valor"] > 0].copy()
     else:
         show_raw = dff_tabela.copy()
-    show_raw = show_raw[["data","descricao","categoria","valor","origem","reembolsado"]].sort_values("data", ascending=False).reset_index(drop=True)
+    _cols_raw = ["data","descricao","categoria","valor","origem","reembolsado"]
+    if "fonte" in show_raw.columns:
+        _cols_raw = ["data","descricao","categoria","valor","origem","fonte","reembolsado"]
+    show_raw = show_raw[_cols_raw].sort_values("data", ascending=False).reset_index(drop=True)
     show = show_raw.copy()
     show["valor_fmt"] = show["valor"].map(fmt_brl_signed)
     show_display = show.drop(columns=["valor"]).rename(columns={
@@ -1062,5 +1105,5 @@ with tab4:
     if n_reemb > 0:
         st.markdown(f"<p style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;'>{n_reemb} transação(ões) em cinza = reembolso casado, neutralizado dos cálculos</p>", unsafe_allow_html=True)
     st.download_button("⬇ baixar transações (.xlsx)",
-                       df_to_xlsx(show_raw.rename(columns={"data":"Data","descricao":"Descrição","categoria":"Categoria","valor":"Valor","origem":"Origem","reembolsado":"Reembolsado"})),
+                       df_to_xlsx(show_raw.rename(columns={"data":"Data","descricao":"Descrição","categoria":"Categoria","valor":"Valor","origem":"Origem","fonte":"Fonte","reembolsado":"Reembolsado"})),
                        "transacoes.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
