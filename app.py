@@ -990,15 +990,33 @@ else:
     networth_label   = "—"
     _saldo_fonte     = None
 
-c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("Total gasto",     fmt_brl(gastos))
-c2.metric("Total recebido",  fmt_brl(receitas))
-c3.metric("Saldo período",   fmt_brl_signed(saldo), delta=f"{'+' if saldo >= 0 else ''}{saldo:.2f}", delta_color="normal")
-c4.metric("Transações",      len(dff_total))
-c5.metric("Networth aprox.", networth_label)
+c1, c2, c3 = st.columns(3)
+c1.metric("Networth aprox.", networth_label)
+c2.metric("Conta",           fmt_brl(balamt_recente) if balamt_recente is not None else "—")
+c3.metric("Caixinha",        fmt_brl(saldo_caixinha))
+
+# Linha discreta: gasto/recebido/saldo do período + transações (menos proeminentes, só do período)
+st.markdown(
+    f"""<div style='display:flex;gap:1.5rem;margin:0.3rem 0 0.2rem;flex-wrap:wrap;'>
+    <div style='color:#555;font-size:0.78rem;font-family:DM Mono,monospace;'>
+        gasto no período: <span style='color:#ff8a8a'>{fmt_brl(gastos)}</span>
+    </div>
+    <div style='color:#555;font-size:0.78rem;font-family:DM Mono,monospace;'>
+        recebido no período: <span style='color:#a8e063'>{fmt_brl(receitas)}</span>
+    </div>
+    <div style='color:#555;font-size:0.78rem;font-family:DM Mono,monospace;'>
+        saldo período: <span style='color:#e8e8e0'>{fmt_brl_signed(saldo)}</span>
+    </div>
+    <div style='color:#555;font-size:0.78rem;font-family:DM Mono,monospace;'>
+        {len(dff_total)} transações
+    </div>
+    </div>""",
+    unsafe_allow_html=True
+)
 
 # Mini-painel de patrimônio
-if _saldo_fonte or saldo_caixinha != 0:
+# Mini-painel: fatura + data de atualização (conta/caixinha já estão em destaque acima)
+if _saldo_fonte or _pluggy_fatura is not None:
     _atualizado_str = (
         f"<div style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;'>🕐 atualizado: <span style='color:#e8e8e0'>{str(_pluggy_updated)[:10]}</span></div>"
         if _pluggy_updated else
@@ -1009,16 +1027,8 @@ if _saldo_fonte or saldo_caixinha != 0:
         f"<div style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;'>💳 fatura: <span style='color:#ff6b6b'>{fmt_brl(_pluggy_fatura)}</span></div>"
         if _pluggy_fatura is not None else ""
     )
-    _cx_str = (
-        f"<div style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;'>📦 caixinha: <span style='color:#e8e8e0'>{fmt_brl(saldo_caixinha)}</span></div>"
-        if saldo_caixinha != 0 else ""
-    )
     st.markdown(
         f"""<div style='display:flex;gap:1.5rem;margin:0.5rem 0 0.2rem;flex-wrap:wrap;'>
-        <div style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;'>
-            🏦 conta: <span style='color:#e8e8e0'>{fmt_brl(balamt_recente) if balamt_recente is not None else "—"}</span>
-        </div>
-        {_cx_str}
         {_fatura_str}
         {_atualizado_str}
         </div>""",
