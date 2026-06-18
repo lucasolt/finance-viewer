@@ -419,13 +419,12 @@ def load_from_pluggy() -> pd.DataFrame:
     df = pd.DataFrame()
     df["data"] = pd.to_datetime(df_raw["date"], utc=True).dt.tz_localize(None)
     df["descricao"] = df_raw["description"]
-    # Valor real em BRL: usa amountInAccountCurrency quando a transação não
-    # está em BRL (ex. assinaturas em USD, onde "amount" vem na moeda
-    # original e não reflete o valor cobrado). Detecção explícita via
-    # currencyCode em vez de confiar em fillna — mais seguro.
-    if "currencyCode" in df_raw.columns and "amountInAccountCurrency" in df_raw.columns:
-        is_estrangeira = df_raw["currencyCode"].notna() & (df_raw["currencyCode"] != "BRL")
-        valor_brl = df_raw["amount"].where(~is_estrangeira, df_raw["amountInAccountCurrency"])
+    # Valor real em BRL: usa amountInAccountCurrency quando disponível (cobre
+    # transações em moeda estrangeira, ex. assinaturas em USD, onde "amount"
+    # vem na moeda original e não reflete o valor cobrado). Cai pra "amount"
+    # quando o campo não existe ou vem nulo (transações já em BRL).
+    if "amountInAccountCurrency" in df_raw.columns:
+        valor_brl = df_raw["amountInAccountCurrency"].fillna(df_raw["amount"])
     else:
         valor_brl = df_raw["amount"]
     # Sinal: na conta (Nu Pagamentos) o sinal do Pluggy já segue a convenção
