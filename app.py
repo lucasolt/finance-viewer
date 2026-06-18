@@ -419,12 +419,21 @@ def load_from_pluggy() -> pd.DataFrame:
     df = pd.DataFrame()
     df["data"] = pd.to_datetime(df_raw["date"], utc=True).dt.tz_localize(None)
     df["descricao"] = df_raw["description"]
+    # Valor real em BRL: usa amountInAccountCurrency quando a transação não
+    # está em BRL (ex. assinaturas em USD, onde "amount" vem na moeda
+    # original e não reflete o valor cobrado). Detecção explícita via
+    # currencyCode em vez de confiar em fillna — mais seguro.
+    if "currencyCode" in df_raw.columns and "amountInAccountCurrency" in df_raw.columns:
+        is_estrangeira = df_raw["currencyCode"].notna() & (df_raw["currencyCode"] != "BRL")
+        valor_brl = df_raw["amount"].where(~is_estrangeira, df_raw["amountInAccountCurrency"])
+    else:
+        valor_brl = df_raw["amount"]
     # Sinal: na conta (Nu Pagamentos) o sinal do Pluggy já segue a convenção
     # (CREDIT positivo = receita, DEBIT negativo = gasto). No cartão
     # (platinum) é o inverso (DEBIT positivo = gasto, CREDIT negativo =
     # pagamento/crédito de fatura), então invertemos.
     is_cartao = df_raw["accountName"].str.lower() == "platinum"
-    df["valor"] = df_raw["amount"].where(~is_cartao, -df_raw["amount"])
+    df["valor"] = valor_brl.where(~is_cartao, -valor_brl)
     df["origem"] = is_cartao.map({True: "fatura", False: "extrato"})
     df["mes"] = df["data"].dt.to_period("M").astype(str)
     df["categoria"] = [
