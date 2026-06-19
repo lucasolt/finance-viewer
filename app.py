@@ -77,30 +77,40 @@ COLOR_SCHEMES = {
 }
 
 # ── Cores fixas por categoria (baseado no tema Lima Escuro) ───────────────────
+# ── Cores fixas por categoria (paleta escurecida/dessaturada, hues espaçados) ──
+# Critério: cada categoria tem um hue temático próprio, dessaturado pra combinar
+# com o tema dark. iFood mantido no vermelho assinatura da marca.
 CATEGORY_COLORS = {
-    "iFood":                 "#8a1616",  # vermelho iFood
-    "Alimentação & Mercado": "#6a8a10",  # lima mais escuro
-    "Vícios & Conveniência": "#aa8820",  # âmbar escuro
-    "Transporte":            "#208aaa",  # azul petróleo
-    "Saúde":                 "#20aa88",  # verde água
-    "Compras":               "#aa2088",  # magenta escuro
-    "Assinaturas":           "#8820aa",  # roxo escuro
-    "Lazer":                 "#aa5020",  # laranja escuro
-    "Telecom":               "#5020aa",  # índigo
-    "Vestuário":             "#208820",  # verde escuro
-    "Serviços":              "#2050aa",  # azul escuro
-    "Impostos":              "#aa2020",  # vermelho escuro
-    "Profissional":          "#208050",  # verde musgo
-    "Investimento":          "#50aa20",  # verde limão
-    "Transferências":        "#607080",  # cinza azulado
-    "Bolsa Residência":      "#20aa50",  # verde esmeralda
-    "Pagamento de Fatura":   "#404040",  # cinza escuro
-    "Crédito de Fatura":     "#505850",  # cinza esverdeado
-    "Outros":                "#505050",  # cinza neutro
+    "iFood":                 "#cc2222",  # vermelho iFood (marca)
+    "Alimentação & Mercado": "#7a9e3e",  # verde-oliva (comida/mercado)
+    "Telecom":               "#4a6fa5",  # azul-acinzentado (comunicação)
+    "Compras":               "#b05ca0",  # magenta acinzentado
+    "Serviços":              "#5b7a8c",  # azul-petróleo neutro
+    "Outros":                "#6b6b6b",  # cinza neutro (categoria "lixo")
+    "Saúde":                 "#3f9e7a",  # verde-água (saúde/farmácia)
+    "Assinaturas":           "#8a5fc4",  # roxo (digital/streaming)
+    "Transporte":            "#3f8fb5",  # azul (mobilidade)
+    "Vícios & Conveniência": "#c4923f",  # âmbar/tabaco
+    "Vestuário":             "#c46a8a",  # rosa-queimado (moda)
+    "Lazer":                 "#c46a3f",  # laranja-terracota (diversão)
+    "Impostos":              "#9e3f3f",  # vermelho-tijolo (obrigação)
+    "Transferências":        "#7a8a99",  # cinza-azulado (neutro/movimento)
+    "Profissional":          "#4a8a6a",  # verde-musgo (trabalho)
+    "Investimento":          "#6a9e3f",  # verde-limão escurecido (crescimento)
+    "Bolsa Residência":      "#3f9e5c",  # verde-esmeralda
+    "Pagamento de Fatura":   "#454545",  # cinza escuro neutro
+    "Crédito de Fatura":     "#555f55",  # cinza esverdeado
 }
 
+# Fallback cíclico pra categorias não mapeadas — evita que tudo caia
+# no mesmo cinza quando surgir uma categoria nova no futuro.
+_FALLBACK_CYCLE = ["#8899aa", "#aa8899", "#99aa88", "#aa9988", "#8899cc", "#cc9988"]
+
 def cat_color(categoria: str) -> str:
-    return CATEGORY_COLORS.get(categoria, "#707070")
+    if categoria in CATEGORY_COLORS:
+        return CATEGORY_COLORS[categoria]
+    idx = abs(hash(categoria)) % len(_FALLBACK_CYCLE)
+    return _FALLBACK_CYCLE[idx]
 
 def cat_colors_list(categorias: list) -> list:
     return [cat_color(c) for c in categorias]
