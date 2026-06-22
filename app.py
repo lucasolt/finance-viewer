@@ -1055,7 +1055,7 @@ if _saldo_fonte or _pluggy_fatura is not None:
 st.divider()
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4 = st.tabs(["Por mês", "Por categoria", "Evolução", "Transações"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Por mês", "Por categoria", "Evolução", "Transações", "Saldo & Projeção"])
 
 with tab1:
     if dff.empty:
@@ -1454,6 +1454,419 @@ with tab4:
     st.download_button("⬇ baixar transações (.xlsx)",
                        df_to_xlsx(show_raw.rename(columns={"data":"Data","descricao":"Descrição","categoria":"Categoria","valor":"Valor","origem":"Origem","fonte":"Fonte","reembolsado":"Reembolsado"})),
                        "transacoes.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+
+    # ─────────────────────────────────────────────────────────────────────────────
+# PATCH — cole no app.py em dois lugares:
+#
+# 1) Troque a linha dos tabs:
+#    DE:  tab1, tab2, tab3, tab4 = st.tabs(["Por mês", "Por categoria", "Evolução", "Transações"])
+#    PRA: tab1, tab2, tab3, tab4, tab5 = st.tabs(["Por mês", "Por categoria", "Evolução", "Transações", "Saldo & Projeção"])
+#
+# 2) Cole o bloco abaixo DEPOIS do `with tab4:` completo (antes do comentário
+#    "── Barra deslizante de período" ou no final das tabs).
+# ─────────────────────────────────────────────────────────────────────────────
+
+with tab5:
+    import datetime as _dt5
+    import math
+
+    st.markdown(
+        "<p style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;"
+        "text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.8rem'>"
+        "saldo líquido mensal (receitas − gastos) e projeção linear</p>",
+        unsafe_allow_html=True,
+    )
+
+    # ── Dataset base: todas as categorias selecionadas, sem reembolsados, sem filtro de tipo
+    df_proj_base = df[df["categoria"].isin(cats_sel) & ~df["reembolsado"]].copy()
+    meses_todos_proj = sorted(df_proj_base["mes"].unique())
+
+    if not meses_todos_proj:
+        st.info("Nenhum dado disponível.")
+    else:
+        # ── Controles ─────────────────────────────────────────────────────────
+        col_ctrl1, col_ctrl2 = st.columns([3, 1])
+
+        with col_ctrl1:
+            st.markdown(
+                "<p style='color:#666;font-size:0.72rem;font-family:DM Mono,monospace;"
+                "text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem'>"
+                "período base para cálculo da média</p>",
+                unsafe_allow_html=True,
+            )
+            if len(meses_todos_proj) >= 2:
+                base_range = st.select_slider(
+                    "base",
+                    options=meses_todos_proj,
+                    value=(meses_todos_proj[0], meses_todos_proj[-1]),
+                    key="proj_base_range",
+                    label_visibility="collapsed",
+                )
+            else:
+                base_range = (meses_todos_proj[0], meses_todos_proj[0])
+
+        with col_ctrl2:
+            st.markdown(
+                "<p style='color:#666;font-size:0.72rem;font-family:DM Mono,monospace;"
+                "text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem'>"
+                "projetar até</p>",
+                unsafe_allow_html=True,
+            )
+            _proj_default_date = (_dt5.date.today().replace(year=_dt5.date.today().year + 1))
+            proj_ate = st.date_input(
+                "proj_ate",
+                value=_proj_default_date,
+                key="proj_ate_date",
+                label_visibility="collapsed",
+            )
+
+        # ── Cálculo do saldo mensal histórico ─────────────────────────────────
+        saldo_mensal = (
+            df_proj_base.groupby("mes")["valor"]
+            .sum()
+            .reset_index()
+            .rename(columns={"valor": "saldo"})
+            .sort_values("mes")
+            .reset_index(drop=True)
+        )
+
+        # Detalhes: receita e gasto por mês (para hover)
+        rec_por_mes = (
+            df_proj_base[df_proj_base["valor"] > 0]
+            .groupby("mes")["valor"].sum()
+            .rename("receita")
+        )
+        gas_por_mes = (
+            df_proj_base[df_proj_base["valor"] < 0]
+            .groupby("mes")["valor"].sum().abs()
+            .rename("gasto")
+        )
+        saldo_mensal = (
+            saldo_mensal
+            .join(rec_por_mes, on="mes")
+            .join(gas_por_mes, on="mes")
+        )
+        saldo_mensal["receita"] = saldo_mensal["receita"].fillna(0)
+        saldo_mensal["gasto"]   = saldo_mensal["gasto"].fillna(0)
+
+        # ── Média do período base ──────────────────────────────────────────────
+        mask_base = (
+            (saldo_mensal["mes"] >= base_range[0]) &
+            (saldo_mensal["mes"] <= base_range[1])
+        )
+        saldo_base = saldo_mensal[mask_base]
+        media_mensal = saldo_base["saldo"].mean() if not saldo_base.empty else 0.0
+        n_meses_base = len(saldo_base)
+
+        # ── Meses de projeção ─────────────────────────────────────────────────
+        ultimo_mes_str = saldo_mensal["mes"].max()
+        p_atual = pd.Period(ultimo_mes_str, freq="M")
+        p_fim   = pd.Period(proj_ate.strftime("%Y-%m"), freq="M")
+
+        meses_proj = []
+        p = p_atual + 1
+        while p <= p_fim:
+            meses_proj.append(str(p))
+            p += 1
+
+        colors = get_colors()
+        _accent = get_accent()
+
+        # ── Sub-tabs ──────────────────────────────────────────────────────────
+        st5_a, st5_b = st.tabs(["Saldo mensal", "Acumulado projetado"])
+
+        # ─── Sub-tab A: Saldo mensal + projeção ───────────────────────────────
+        with st5_a:
+            fig_s = go.Figure()
+
+            # Barras históricas — verde se positivo, vermelho se negativo
+            _bar_colors = [
+                colors[0] if v >= 0 else "#ff5555"
+                for v in saldo_mensal["saldo"]
+            ]
+            # Marca período base com opacidade cheia; fora do base, mais apagado
+            _bar_opacity = [
+                1.0 if (base_range[0] <= m <= base_range[1]) else 0.45
+                for m in saldo_mensal["mes"]
+            ]
+
+            fig_s.add_bar(
+                x=saldo_mensal["mes"],
+                y=saldo_mensal["saldo"],
+                name="Saldo histórico",
+                marker=dict(
+                    color=_bar_colors,
+                    opacity=_bar_opacity,
+                    line_width=0,
+                ),
+                customdata=list(zip(
+                    saldo_mensal["receita"],
+                    saldo_mensal["gasto"],
+                    saldo_mensal["saldo"],
+                )),
+                hovertemplate=(
+                    "<b>%{x}</b><br>"
+                    "Receita: R$ %{customdata[0]:,.2f}<br>"
+                    "Gasto:   R$ %{customdata[1]:,.2f}<br>"
+                    "Saldo:   R$ %{customdata[2]:,.2f}"
+                    "<extra></extra>"
+                ),
+            )
+
+            # Barras de projeção (translúcidas)
+            if meses_proj:
+                fig_s.add_bar(
+                    x=meses_proj,
+                    y=[media_mensal] * len(meses_proj),
+                    name="Projeção (média base)",
+                    marker=dict(
+                        color=colors[0] if media_mensal >= 0 else "#ff5555",
+                        opacity=0.25,
+                        line=dict(
+                            color=colors[0] if media_mensal >= 0 else "#ff5555",
+                            width=1,
+                        ),
+                    ),
+                    hovertemplate=(
+                        "<b>%{x}</b> (projeção)<br>"
+                        "Estimativa: R$ %{y:,.2f}<extra></extra>"
+                    ),
+                )
+
+            # Linha de média (atravessa histórico + projeção)
+            _todos_x = list(saldo_mensal["mes"]) + meses_proj
+            fig_s.add_scatter(
+                x=_todos_x,
+                y=[media_mensal] * len(_todos_x),
+                name=f"Média base · {fmt_brl_signed(media_mensal)}/mês",
+                mode="lines",
+                line=dict(color=colors[1], width=2, dash="dot"),
+                hovertemplate=f"Média: R$ {media_mensal:,.2f}/mês<extra></extra>",
+            )
+
+            fig_s.add_hline(y=0, line_color="#333", line_width=1)
+
+            # Anotação separando histórico de projeção
+            if meses_proj:
+                fig_s.add_vline(
+                    x=ultimo_mes_str,
+                    line_color="#333",
+                    line_width=1,
+                    line_dash="dot",
+                )
+                fig_s.add_annotation(
+                    x=meses_proj[0],
+                    y=1,
+                    yref="paper",
+                    text="projeção →",
+                    showarrow=False,
+                    font=dict(color="#444", size=10, family="DM Mono"),
+                    xanchor="left",
+                )
+
+            fig_s.update_layout(
+                **build_plotly_theme(),
+                height=440,
+                bargap=0.25,
+                xaxis_title=None,
+                yaxis_title="R$",
+                legend=dict(
+                    orientation="h", yanchor="bottom", y=1.02, font=dict(size=11)
+                ),
+            )
+            st.plotly_chart(fig_s, width='stretch')
+
+            # ── KPIs ──────────────────────────────────────────────────────────
+            _melhor  = saldo_mensal["saldo"].max()
+            _pior    = saldo_mensal["saldo"].min()
+            _proj_acum = media_mensal * len(meses_proj)
+            _meses_pos = (saldo_mensal["saldo"] >= 0).sum()
+            _meses_neg = (saldo_mensal["saldo"] < 0).sum()
+
+            k1, k2, k3, k4 = st.columns(4)
+            k1.metric(
+                f"Média ({n_meses_base} meses base)",
+                fmt_brl_signed(media_mensal),
+            )
+            k2.metric("Melhor mês", fmt_brl_signed(_melhor))
+            k3.metric("Pior mês",   fmt_brl_signed(_pior))
+            k4.metric(
+                f"Projeção acumulada ({len(meses_proj)}m)",
+                fmt_brl_signed(_proj_acum) if meses_proj else "—",
+            )
+
+            st.markdown(
+                f"<p style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;"
+                f"margin-top:0.3rem'>"
+                f"meses no positivo: <span style='color:{colors[0]}'>{_meses_pos}</span> · "
+                f"meses no negativo: <span style='color:#ff5555'>{_meses_neg}</span>"
+                f"</p>",
+                unsafe_allow_html=True,
+            )
+
+            # ── Tabela ────────────────────────────────────────────────────────
+            with st.expander("tabela de saldos mensais", expanded=False):
+                tbl_s = saldo_mensal[["mes","receita","gasto","saldo"]].copy()
+                tbl_s["base"] = tbl_s["mes"].apply(
+                    lambda m: "✓" if base_range[0] <= m <= base_range[1] else ""
+                )
+                tbl_s.columns = ["Mês", "Receita", "Gasto", "Saldo", "Base"]
+                for col in ["Receita", "Gasto", "Saldo"]:
+                    tbl_s[col] = tbl_s[col].map(fmt_brl_signed)
+                if meses_proj:
+                    proj_rows = pd.DataFrame({
+                        "Mês": meses_proj,
+                        "Receita": ["—"] * len(meses_proj),
+                        "Gasto":   ["—"] * len(meses_proj),
+                        "Saldo":   [fmt_brl_signed(media_mensal)] * len(meses_proj),
+                        "Base":    ["(proj.)"] * len(meses_proj),
+                    })
+                    tbl_s = pd.concat([tbl_s, proj_rows], ignore_index=True)
+                st.dataframe(
+                    tbl_s.sort_values("Mês", ascending=False).reset_index(drop=True),
+                    width='stretch', height=300,
+                )
+
+        # ─── Sub-tab B: Acumulado projetado ────────────────────────────────────
+        with st5_b:
+            st.markdown(
+                "<p style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;"
+                "margin-bottom:0.5rem'>"
+                "patrimônio estimado partindo do networth atual e aplicando o saldo médio mensal</p>",
+                unsafe_allow_html=True,
+            )
+
+            # Ponto de partida: networth atual (ou só conta se não tiver)
+            if _pluggy_conta is not None:
+                _nw_atual = _pluggy_conta + _pluggy_caixinha - (_pluggy_fatura or 0)
+                _nw_label = "Networth atual (Pluggy)"
+            elif balamt_recente is not None:
+                _nw_atual = balamt_recente + saldo_caixinha
+                _nw_label = "Networth atual (Supabase)"
+            else:
+                _nw_atual = None
+                _nw_label = "—"
+
+            col_nw, col_ajuste = st.columns([1, 2])
+            with col_nw:
+                st.markdown(
+                    f"<p style='color:#666;font-size:0.72rem;font-family:DM Mono,monospace;"
+                    f"text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.2rem'>"
+                    f"{_nw_label}</p>",
+                    unsafe_allow_html=True,
+                )
+                nw_input = st.number_input(
+                    "nw",
+                    value=float(_nw_atual) if _nw_atual is not None else 0.0,
+                    step=500.0,
+                    format="%.2f",
+                    key="proj_nw_input",
+                    label_visibility="collapsed",
+                    help="Patrimônio inicial para a projeção acumulada",
+                )
+            with col_ajuste:
+                st.markdown(
+                    "<p style='color:#666;font-size:0.72rem;font-family:DM Mono,monospace;"
+                    "text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.2rem'>"
+                    "ajuste de saldo mensal projetado (R$/mês)</p>",
+                    unsafe_allow_html=True,
+                )
+                saldo_ajuste = st.slider(
+                    "ajuste",
+                    min_value=-5000.0,
+                    max_value=5000.0,
+                    value=0.0,
+                    step=100.0,
+                    key="proj_saldo_ajuste",
+                    label_visibility="collapsed",
+                    help="Ajuste sobre a média calculada — útil para simular cenários",
+                )
+
+            _saldo_proj = media_mensal + saldo_ajuste
+            st.markdown(
+                f"<p style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;'>"
+                f"saldo usado na projeção: "
+                f"<span style='color:{_accent}'>{fmt_brl_signed(_saldo_proj)}/mês</span>"
+                f"</p>",
+                unsafe_allow_html=True,
+            )
+
+            if not meses_proj and not saldo_mensal.empty:
+                st.info("Defina uma data de projeção futura para ver o acumulado.")
+            else:
+                # Série histórica acumulada (saldo_mensal cumsum desde o início)
+                saldo_hist_acum = saldo_mensal.copy()
+                saldo_hist_acum["saldo_acum"] = saldo_hist_acum["saldo"].cumsum()
+
+                # Série projetada: parte do nw_input, cresce com _saldo_proj
+                _pts_proj_x = [ultimo_mes_str] + meses_proj
+                _pts_proj_y = [nw_input]
+                for _ in meses_proj:
+                    _pts_proj_y.append(_pts_proj_y[-1] + _saldo_proj)
+
+                # Série histórica de networth (da tabela de saldos, se disponível)
+                _tem_nw_hist = (
+                    not df_saldos.empty
+                    and "balamt" in df_saldos.columns
+                )
+
+                fig_acum = go.Figure()
+
+                if _tem_nw_hist:
+                    nw_hist_plot = saldos_sorted[["data", "networth"]].dropna(subset=["networth"])
+                    fig_acum.add_scatter(
+                        x=nw_hist_plot["data"],
+                        y=nw_hist_plot["networth"],
+                        name="Networth real",
+                        mode="lines+markers",
+                        line=dict(color=colors[0], width=2),
+                        marker=dict(size=5),
+                        hovertemplate="<b>%{x|%Y-%m}</b><br>Networth: R$ %{y:,.2f}<extra></extra>",
+                        fill="tozeroy",
+                        fillcolor="rgba(200,240,96,0.08)",
+                    )
+
+                # Projeção como linha tracejada
+                fig_acum.add_scatter(
+                    x=_pts_proj_x,
+                    y=_pts_proj_y,
+                    name="Projeção",
+                    mode="lines+markers",
+                    line=dict(color=colors[1], width=2, dash="dash"),
+                    marker=dict(size=6, symbol="circle-open"),
+                    hovertemplate="<b>%{x}</b> (proj.)<br>Estimativa: R$ %{y:,.2f}<extra></extra>",
+                )
+
+                # Meta opcional — linha horizontal
+                _meta = st.session_state.get("proj_meta", None)
+
+                fig_acum.update_layout(
+                    **build_plotly_theme(),
+                    height=420,
+                    xaxis_title=None,
+                    yaxis_title="R$",
+                    legend=dict(
+                        orientation="h", yanchor="bottom", y=1.02, font=dict(size=11)
+                    ),
+                )
+                st.plotly_chart(fig_acum, width='stretch')
+
+                # KPIs da projeção acumulada
+                _nw_fim = _pts_proj_y[-1] if _pts_proj_y else nw_input
+                _variacao = _nw_fim - nw_input
+                _pct = (_variacao / nw_input * 100) if nw_input != 0 else 0
+
+                b1, b2, b3 = st.columns(3)
+                b1.metric("Patrimônio inicial", fmt_brl(nw_input))
+                b2.metric(
+                    f"Patrimônio em {proj_ate.strftime('%m/%Y')}",
+                    fmt_brl(_nw_fim),
+                    delta=f"{'+' if _variacao >= 0 else ''}{fmt_brl_signed(_variacao)}",
+                )
+                b3.metric(
+                    "Variação total",
+                    f"{_pct:+.1f}%",
+                )
 
     # ── Editar categoria ──────────────────────────────────────────────────────
     st.markdown("---")
