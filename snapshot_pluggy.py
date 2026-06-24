@@ -108,7 +108,7 @@ def main() -> None:
         gravados.append(f"fatura={saldos['fatura_cartao']:.2f}")
 
     if gravados:
-        print(f"[ok] {hoje} — {', '.join(gravados)}")
+        print(f"[ok] {hoje} — {len(gravados)} campo(s) gravado(s)")
     else:
         # Não é necessariamente erro (ex: API devolveu vazio), mas sinaliza
         print(f"[aviso] {hoje} — nenhum saldo coletado; verifique o item no Pluggy")
