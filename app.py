@@ -622,20 +622,59 @@ tab1,tab2,tab3,tab4=st.tabs(["Por mês","Por categoria","Evolução","Transaçõ
 with tab1:
     if dff.empty: st.info("Nenhum dado no período.")
     elif tipo=="Tudo":
-        meses_u=sorted(dff["mes"].unique())
-        rec_mes=dff[dff["valor"]>0].groupby("mes")["valor"].sum().reindex(meses_u,fill_value=0)
-        gas_mes=dff[dff["valor"]<0].groupby("mes")["valor"].sum().reindex(meses_u,fill_value=0)
-        sal_mes=rec_mes+gas_mes; colors=get_colors()
-        fig=go.Figure()
-        fig.add_bar(x=meses_u,y=rec_mes.values,name="Receitas",marker_color=colors[0],marker_line_width=0,hovertemplate="<b>%{x}</b><br>Receita: R$ %{y:,.2f}<extra></extra>")
-        fig.add_bar(x=meses_u,y=gas_mes.values,name="Gastos",marker_color=colors[2],marker_line_width=0,hovertemplate="<b>%{x}</b><br>Gasto: R$ %{y:,.2f}<extra></extra>")
-        fig.add_scatter(x=meses_u,y=sal_mes.values,name="Saldo",mode="lines+markers",line=dict(color=colors[1],width=2),marker=dict(size=6),hovertemplate="<b>%{x}</b><br>Saldo: R$ %{y:,.2f}<extra></extra>")
-        fig.add_hline(y=0,line_color="#333",line_width=1)
-        fig.update_layout(**build_plotly_theme(),height=420,bargap=0.25,barmode="relative",xaxis_title=None,yaxis_title="R$",legend=dict(orientation="h",yanchor="bottom",y=1.02,font=dict(size=11)))
-        st.plotly_chart(fig,width='stretch')
-        _tbl=pd.DataFrame({"Mês":meses_u,"Receitas":rec_mes.values,"Gastos":gas_mes.abs().values,"Saldo":sal_mes.values})
-        st.download_button("⬇ baixar tabela (.xlsx)",df_to_xlsx(_tbl),"por_mes.xlsx","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",use_container_width=True)
-    else:
+        # Substitui o bloco inteiro dentro de `elif tipo == "Tudo":` no tab1
+        meses_u = sorted(dff["mes"].unique())
+        rec_mes = dff[dff["valor"] > 0].groupby("mes")["valor"].sum().reindex(meses_u, fill_value=0)
+        gas_mes = dff[dff["valor"] < 0].groupby("mes")["valor"].sum().abs().reindex(meses_u, fill_value=0)
+        sal_mes = rec_mes - gas_mes  # saldo real (positivo = sobrou, negativo = gastou mais)
+
+        colors = get_colors()
+        fig = go.Figure()
+
+        # Receitas — barra verde sólida
+        fig.add_bar(
+            x=meses_u, y=rec_mes.values, name="Receitas",
+            marker_color=colors[0], marker_line_width=0,
+            hovertemplate="<b>%{x}</b><br>Receita: R$ %{y:,.2f}<extra></extra>",
+        )    
+
+    # Gastos — barra vermelha hachurrada, sobreposta (valor absoluto)
+        fig.add_bar(
+            x=meses_u, y=gas_mes.values, name="Gastos",
+            marker=dict(
+                color="rgba(180, 40, 40, 0.35)",
+                pattern=dict(shape="/", fgcolor="#ff4444", fgopacity=0.9, size=5, solidity=0.45),
+                line=dict(color="#cc3333", width=1),
+        ),
+        hovertemplate="<b>%{x}</b><br>Gasto: R$ %{y:,.2f}<extra></extra>",
+        )
+
+        # Linha de saldo
+        fig.add_scatter(
+        x=meses_u, y=sal_mes.values, name="Saldo",
+        mode="lines+markers", line=dict(color=colors[1], width=2),
+        marker=dict(size=6),
+        hovertemplate="<b>%{x}</b><br>Saldo: R$ %{y:,.2f}<extra></extra>",
+        )
+
+        fig.add_hline(y=0, line_color="#333", line_width=1)
+        fig.update_layout(
+        **build_plotly_theme(), height=420, bargap=0.25, barmode="overlay",
+        xaxis_title=None, yaxis_title="R$",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=11)),
+        )
+        st.plotly_chart(fig, width='stretch')
+
+        _tbl = pd.DataFrame({
+            "Mês": meses_u,
+            "Receitas": rec_mes.values,
+            "Gastos": gas_mes.values,
+            "Saldo": sal_mes.values,
+        })
+        st.download_button("⬇ baixar tabela (.xlsx)", df_to_xlsx(_tbl), "por_mes.xlsx",
+                   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                   use_container_width=True)
+else:
         por_mes=dff.groupby("mes")["valor_abs"].sum().reset_index().sort_values("mes")
         fig=go.Figure()
         fig.add_bar(x=por_mes["mes"],y=por_mes["valor_abs"],marker_color=get_accent(),marker_line_width=0,hovertemplate="<b>%{x}</b><br>R$ %{y:,.2f}<extra></extra>")
