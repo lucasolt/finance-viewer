@@ -644,7 +644,7 @@ with tab1:
             marker=dict(
                 color="rgba(180, 40, 40, 0.55)",
                 pattern=dict(shape="/", fgcolor="#ff4444", fgopacity=0.9, size=12, solidity=0.2),
-                line=dict(color="#cc3333", width=1),
+                line=dict(color="#cc3333", width=1.5),
         ),
         hovertemplate="<b>%{x}</b><br>Gasto: R$ %{y:,.2f}<extra></extra>",
         )
