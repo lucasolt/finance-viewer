@@ -176,8 +176,8 @@ PLUGGY_CAT_FALLBACK = {
 }
 
 @st.cache_data(ttl=60)
-def load_data_overrides() -> pd.DataFrame:
-    res = get_supabase().table("data_overrides").select("*").execute()
+def load_date_overrides() -> pd.DataFrame:
+    res = get_supabase().table("date_overrides").select("*").execute()
     if not res.data:
         return pd.DataFrame(columns=["descricao", "data_original", "data_corrigida", "motivo"])
     df = pd.DataFrame(res.data)
@@ -185,7 +185,7 @@ def load_data_overrides() -> pd.DataFrame:
     df["data_corrigida"] = pd.to_datetime(df["data_corrigida"]).dt.date
     return df
 
-def apply_data_overrides(df: pd.DataFrame, overrides: pd.DataFrame) -> pd.DataFrame:
+def apply_date_overrides(df: pd.DataFrame, overrides: pd.DataFrame) -> pd.DataFrame:
     if overrides.empty or df.empty:
         return df
     df = df.copy()
@@ -423,8 +423,8 @@ df_saldos = load_saldos(); saldo_pluggy = load_saldo_pluggy()
 prefs = load_prefs(); df_cat_overrides = load_categoria_overrides()
 df = apply_categoria_overrides(df, df_cat_overrides)
 
-df_data_overrides = load_data_overrides()
-df = apply_data_overrides(df, df_data_overrides)
+df_date_overrides = load_date_overrides()
+df = apply_date_overrides(df, df_date_overrides)
 
 def save_caixinha(data,valor): get_supabase().table("caixinha_historico").upsert({"data":data,"valor":valor},on_conflict="data").execute()
 def save_fatura(data,valor): get_supabase().table("fatura_historico").upsert({"data":data,"valor":valor},on_conflict="data").execute()
