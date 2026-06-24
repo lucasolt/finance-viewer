@@ -677,9 +677,10 @@ with tab1:
                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                    use_container_width=True)
     else:
+        bar_color = "#cc2222" if tipo == "Gastos" else get_accent()
         por_mes=dff.groupby("mes")["valor_abs"].sum().reset_index().sort_values("mes")
         fig=go.Figure()
-        fig.add_bar(x=por_mes["mes"],y=por_mes["valor_abs"],marker_color=get_accent(),marker_line_width=0,hovertemplate="<b>%{x}</b><br>R$ %{y:,.2f}<extra></extra>")
+        fig.add_bar(x=por_mes["mes"],y=por_mes["valor_abs"],marker_color=bar_color,marker_line_width=0,hovertemplate="<b>%{x}</b><br>R$ %{y:,.2f}<extra></extra>")
         fig.update_layout(**build_plotly_theme(),height=380,bargap=0.3,xaxis_title=None,yaxis_title="R$",showlegend=False)
         st.plotly_chart(fig,width='stretch')
         st.download_button("⬇ baixar tabela (.xlsx)",df_to_xlsx(por_mes.rename(columns={"mes":"Mês","valor_abs":"Valor"})),"por_mes.xlsx","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",use_container_width=True)
