@@ -197,6 +197,7 @@ def apply_date_overrides(df: pd.DataFrame, overrides: pd.DataFrame) -> pd.DataFr
         key = (row["descricao"], row["data"].date())
         return pd.Timestamp(lookup[key]) if key in lookup else row["data"]
     df["data"] = df.apply(resolve, axis=1)
+    df["mes"] = df["data"].dt.to_period("M").astype(str)  # <-- recalcula aqui
     return df
 
 def fmt_brl(val: float) -> str:
