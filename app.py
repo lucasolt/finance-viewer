@@ -175,6 +175,30 @@ PLUGGY_CAT_FALLBACK = {
     "Gas stations":"Vícios & Conveniência","Cinema, theater and concerts":"Lazer","Shopping":"Compras","Leisure":"Lazer",
 }
 
+@st.cache_data(ttl=60)
+def load_data_overrides() -> pd.DataFrame:
+    res = get_supabase().table("data_overrides").select("*").execute()
+    if not res.data:
+        return pd.DataFrame(columns=["descricao", "data_original", "data_corrigida", "motivo"])
+    df = pd.DataFrame(res.data)
+    df["data_original"]  = pd.to_datetime(df["data_original"]).dt.date
+    df["data_corrigida"] = pd.to_datetime(df["data_corrigida"]).dt.date
+    return df
+
+def apply_data_overrides(df: pd.DataFrame, overrides: pd.DataFrame) -> pd.DataFrame:
+    if overrides.empty or df.empty:
+        return df
+    df = df.copy()
+    lookup = {
+        (row["descricao"], row["data_original"]): row["data_corrigida"]
+        for _, row in overrides.iterrows()
+    }
+    def resolve(row):
+        key = (row["descricao"], row["data"].date())
+        return pd.Timestamp(lookup[key]) if key in lookup else row["data"]
+    df["data"] = df.apply(resolve, axis=1)
+    return df
+
 def fmt_brl(val: float) -> str:
     return f"R$ {abs(val):,.2f}".replace(",","X").replace(".",",").replace("X",".")
 
@@ -398,6 +422,9 @@ except Exception as e:
 df_saldos = load_saldos(); saldo_pluggy = load_saldo_pluggy()
 prefs = load_prefs(); df_cat_overrides = load_categoria_overrides()
 df = apply_categoria_overrides(df, df_cat_overrides)
+
+df_data_overrides = load_data_overrides()
+df = apply_data_overrides(df, df_data_overrides)
 
 def save_caixinha(data,valor): get_supabase().table("caixinha_historico").upsert({"data":data,"valor":valor},on_conflict="data").execute()
 def save_fatura(data,valor): get_supabase().table("fatura_historico").upsert({"data":data,"valor":valor},on_conflict="data").execute()
