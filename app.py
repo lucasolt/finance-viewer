@@ -674,7 +674,7 @@ with tab1:
         st.download_button("⬇ baixar tabela (.xlsx)", df_to_xlsx(_tbl), "por_mes.xlsx",
                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                    use_container_width=True)
-else:
+    else:
         por_mes=dff.groupby("mes")["valor_abs"].sum().reset_index().sort_values("mes")
         fig=go.Figure()
         fig.add_bar(x=por_mes["mes"],y=por_mes["valor_abs"],marker_color=get_accent(),marker_line_width=0,hovertemplate="<b>%{x}</b><br>R$ %{y:,.2f}<extra></extra>")
