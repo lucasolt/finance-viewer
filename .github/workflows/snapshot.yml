@@ -1,0 +1,30 @@
+name: snapshot-pluggy
+
+on:
+  schedule:
+    # 09:00 UTC = 06:00 America/Sao_Paulo (BRT, UTC-3).
+    # GitHub usa sempre UTC; ajuste se quiser outro horário.
+    - cron: "0 9 * * *"
+  workflow_dispatch: {}  # permite rodar manualmente pelo botão "Run workflow"
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependências
+        run: pip install supabase requests pandas
+
+      - name: Rodar snapshot
+        env:
+          PLUGGY_CLIENT_ID: ${{ secrets.PLUGGY_CLIENT_ID }}
+          PLUGGY_CLIENT_SECRET: ${{ secrets.PLUGGY_CLIENT_SECRET }}
+          PLUGGY_ITEM_ID: ${{ secrets.PLUGGY_ITEM_ID }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python snapshot_pluggy.py
