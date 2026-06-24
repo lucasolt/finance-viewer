@@ -642,9 +642,11 @@ with tab1:
         fig.add_bar(
             x=meses_u, y=gas_mes.values, name="Gastos",
             marker=dict(
-                color="rgba(180, 40, 40, 0.9)",
-                pattern=dict(shape="/", fgcolor="#ff4444", fgopacity=0.9, size=12, solidity=0.2),
-                line=dict(color="#cc3333", width=1.5),
+                color="rgba(220, 50, 50, 0.5)",
+                line=dict(color="#ff4444", width=1.5),
+                #color="rgba(180, 40, 40, 0.9)",
+                #pattern=dict(shape="/", fgcolor="#ff4444", fgopacity=0.9, size=12, solidity=0.2),
+                #line=dict(color="#cc3333", width=1.5),
         ),
         hovertemplate="<b>%{x}</b><br>Gasto: R$ %{y:,.2f}<extra></extra>",
         )
