@@ -643,7 +643,7 @@ with tab1:
             x=meses_u, y=gas_mes.values, name="Gastos",
             marker=dict(
                 color="rgba(180, 40, 40, 0.55)",
-                pattern=dict(shape="/", fgcolor="#ff4444", fgopacity=0.9, size=5, solidity=0.45),
+                pattern=dict(shape="/", fgcolor="#ff4444", fgopacity=0.9, size=12, solidity=0.2),
                 line=dict(color="#cc3333", width=1),
         ),
         hovertemplate="<b>%{x}</b><br>Gasto: R$ %{y:,.2f}<extra></extra>",
