@@ -642,7 +642,7 @@ with tab1:
         fig.add_bar(
             x=meses_u, y=gas_mes.values, name="Gastos",
             marker=dict(
-                color="rgba(180, 40, 40, 0.35)",
+                color="rgba(180, 40, 40, 0.55)",
                 pattern=dict(shape="/", fgcolor="#ff4444", fgopacity=0.9, size=5, solidity=0.45),
                 line=dict(color="#cc3333", width=1),
         ),
