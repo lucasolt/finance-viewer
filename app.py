@@ -851,7 +851,7 @@ else:
             save_pref("proj_ate_date",proj_ate.isoformat())
 
             _accent=get_accent()
-            proj_a,proj_b=st.tabs(["Saldo mensal","Acumulado projetado"])
+            proj_b, proj_a = st.tabs(["Acumulado projetado", "Saldo mensal"])
 
             with proj_a:
                 fig_s=go.Figure()
