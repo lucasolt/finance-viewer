@@ -177,7 +177,7 @@ PLUGGY_CAT_FALLBACK = {
 
 @st.cache_data(ttl=60)
 def load_date_overrides() -> pd.DataFrame:
-    res = get_supabase().table("date_overrides").select("*").execute()
+    res = get_supabase().table("date_override").select("*").execute()
     if not res.data:
         return pd.DataFrame(columns=["descricao", "data_original", "data_corrigida", "motivo"])
     df = pd.DataFrame(res.data)
