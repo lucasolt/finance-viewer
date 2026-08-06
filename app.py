@@ -835,9 +835,9 @@ with tab4:
     else: show_raw["status"]=show_raw.apply(status_txn,axis=1)
     _cols_raw=["data","descricao","categoria","valor","origem"]
     if "fonte" in show_raw.columns: _cols_raw.append("fonte")
-    _cols_raw+=["status","motivo_flag","reembolsado","_ocorrencia"]
+    _cols_raw+=["status","motivo_flag","reembolsado","_ocorrencia","_flag_key"]
     show_raw=show_raw[_cols_raw].sort_values("data",ascending=False).reset_index(drop=True)
-    show_display=show_raw.drop(columns=["motivo_flag","reembolsado","_ocorrencia"]).copy()
+    show_display=show_raw.drop(columns=["motivo_flag","reembolsado","_ocorrencia","_flag_key"]).copy()
     show_display["valor"]=show_display["valor"].map(fmt_brl_signed)
     show_display=show_display.rename(columns={"data":"Data","descricao":"Descrição","categoria":"Categoria","valor":"Valor","origem":"Origem","fonte":"Fonte","status":"Status"})
     def style_row(row):
@@ -845,61 +845,61 @@ with tab4:
         styles=[""]*len(row); val_idx=list(row.index).index("Valor")
         styles[val_idx]="color: #ff6b6b" if str(row["Valor"]).startswith("- ") else "color: #a8e063"
         return styles
+
+    # A chave da tabela carrega um contador: incrementá-lo recria o widget e
+    # zera a seleção. É como a seleção é limpa depois de cada ação — sem isso
+    # ela ficaria presa às posições antigas, que após o rerun apontam para
+    # outras transações.
+    _tbl_nonce=st.session_state.get("tab4_tbl_nonce",0)
+    def limpar_selecao(): st.session_state["tab4_tbl_nonce"]=st.session_state.get("tab4_tbl_nonce",0)+1
+
     _tbl_evt=st.dataframe(show_display.style.apply(style_row,axis=1),width='stretch',height=400,
-                          key="tab4_tbl",on_select="rerun",selection_mode="multi-row")
-    # Linhas clicadas na tabela (posições no show_raw). Ctrl/Cmd+clique = múltiplas.
+                          key=f"tab4_tbl_{_tbl_nonce}",on_select="rerun",selection_mode="multi-row")
     def _sel_rows_from(evt):
         try: return list(evt.selection.rows)
         except Exception:
             try: return list(evt["selection"]["rows"])
             except Exception: return []
     _sel_rows=[i for i in _sel_rows_from(_tbl_evt) if 0<=i<len(show_raw)]
+
     n_auto=int((show_raw["reembolsado"]&(show_raw["motivo_flag"]=="")).sum()); n_manual=int((show_raw["motivo_flag"]!="").sum())
     if n_auto or n_manual:
         st.markdown(f"<p style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;'>cinza = fora dos cálculos · {n_auto} reembolso(s) automático(s) · {n_manual} marcação(ões) manual(is)</p>",unsafe_allow_html=True)
-    st.download_button("⬇ baixar transações (.xlsx)",df_to_xlsx(show_raw.drop(columns=["_ocorrencia"]).rename(columns={"data":"Data","descricao":"Descrição","categoria":"Categoria","valor":"Valor","origem":"Origem","fonte":"Fonte","status":"Status","motivo_flag":"Motivo","reembolsado":"Reembolso auto"})),"transacoes.xlsx","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",use_container_width=True)
-    st.markdown("---"); st.markdown("### editar transação")
+    st.download_button("⬇ baixar transações (.xlsx)",df_to_xlsx(show_raw.drop(columns=["_ocorrencia","_flag_key"]).rename(columns={"data":"Data","descricao":"Descrição","categoria":"Categoria","valor":"Valor","origem":"Origem","fonte":"Fonte","status":"Status","motivo_flag":"Motivo","reembolsado":"Reembolso auto"})),"transacoes.xlsx","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",use_container_width=True)
+
+    st.markdown("---")
     todas_cats=sorted(CATEGORY_COLORS.keys())
-    if show_raw.empty: st.info("Nenhuma transação para exibir.")
-    else:
-        def _row_label(i,row):
-            data_str=row["data"].strftime("%d/%m/%y") if hasattr(row["data"],"strftime") else str(row["data"])[:10]
-            st_=f" · {row['status']}" if str(row.get("status","")).strip() else ""
-            return f"#{i} · {data_str} · {str(row['descricao'])[:40]} · {fmt_brl_signed(row['valor'])} · [{row['categoria']}]{st_}"
-        opcoes_labels=[_row_label(i,r) for i,r in show_raw.iterrows()]
-        opcoes_map={lbl:i for i,lbl in enumerate(opcoes_labels)}
-        # clique na tabela manda no seletor, mas só quando a seleção muda —
-        # senão o selectbox ficaria travado na linha clicada a cada rerun.
-        # Se o valor guardado sumiu (filtro mudou), descarta antes de
-        # instanciar o widget pra não estourar.
-        if _sel_rows and _sel_rows != st.session_state.get("_tab4_prev_sel"):
-            st.session_state["tab4_sel_txn"]=opcoes_labels[_sel_rows[0]]
-        elif st.session_state.get("tab4_sel_txn") not in opcoes_labels:
-            st.session_state.pop("tab4_sel_txn",None)
-        st.session_state["_tab4_prev_sel"]=_sel_rows
-        st.caption("clique numa linha da tabela para selecionar · ctrl/cmd+clique para marcar um par")
-        sel_label=st.selectbox("selecione a transação",options=opcoes_labels,key="tab4_sel_txn",label_visibility="collapsed")
-        sel_idx=opcoes_map[sel_label]; sel_row=show_raw.iloc[sel_idx]
+
+    def _flag_row(r, motivo):
+        save_transacao_flag(r["descricao"],r["data"].strftime("%Y-%m-%d"),float(r["valor"]),int(r["_ocorrencia"]),motivo)
+    def _unflag_row(r):
+        delete_transacao_flag(r["descricao"],r["data"].strftime("%Y-%m-%d"),float(r["valor"]),int(r["_ocorrencia"]))
+
+    if show_raw.empty:
+        st.info("Nenhuma transação para exibir.")
+    elif not _sel_rows:
+        st.markdown("<p style='color:#555;font-size:0.8rem;font-family:DM Mono,monospace;'>clique numa linha da tabela para editar · ctrl/cmd+clique para selecionar várias</p>",unsafe_allow_html=True)
+    elif len(_sel_rows)==1:
+        sel_row=show_raw.iloc[_sel_rows[0]]
         desc_sel=sel_row["descricao"]; data_sel=sel_row["data"].strftime("%Y-%m-%d")
         valor_sel=float(sel_row["valor"]); ocorr_sel=int(sel_row["_ocorrencia"])
-        cat_atual=sel_row["categoria"]; motivo_sel=sel_row["motivo_flag"]
+        cat_atual=sel_row["categoria"]; motivo_sel=sel_row["motivo_flag"]; key_sel=sel_row["_flag_key"]
         n_iguais=(show_raw["descricao"]==desc_sel).sum()
+        st.markdown(f"<p style='color:#888;font-size:0.82rem;font-family:DM Mono,monospace;'>{sel_row['data'].strftime('%d/%m/%y')} · {str(desc_sel)[:60]} · <b>{fmt_brl_signed(valor_sel)}</b> · [{cat_atual}]{(' · '+sel_row['status']) if str(sel_row['status']).strip() else ''}</p>",unsafe_allow_html=True)
 
         st.markdown("<p style='color:#555;font-size:0.72rem;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:0.08em;margin:0.4rem 0 0.2rem;'>categoria</p>",unsafe_allow_html=True)
         col_cat,col_b1,col_b2=st.columns([3,1,1])
         with col_cat:
             nova_cat=st.selectbox("nova categoria",options=todas_cats,index=todas_cats.index(cat_atual) if cat_atual in todas_cats else 0,key="tab4_nova_cat",label_visibility="collapsed")
-        with col_b1: btn_esta=st.button("só esta",use_container_width=True,key="btn_esta_txn")
+        with col_b1: btn_esta=st.button("só esta",use_container_width=True,key="btn_esta_txn",disabled=(nova_cat==cat_atual))
         with col_b2:
             lbl_todas=f"todas ({n_iguais})" if n_iguais>1 else "todas"
             btn_todas=st.button(lbl_todas,use_container_width=True,key="btn_todas_txn",disabled=(nova_cat==cat_atual))
         if btn_esta:
-            if nova_cat==cat_atual: st.info("Categoria já é essa.")
-            else:
-                try: save_categoria_override(desc_sel,nova_cat,data_str=data_sel); st.success(f"Categoria desta transação → **{nova_cat}**"); load_categoria_overrides.clear(); st.rerun()
-                except Exception as _e: st.error(f"Erro ao salvar: {_e}")
+            try: save_categoria_override(desc_sel,nova_cat,data_str=data_sel); load_categoria_overrides.clear(); limpar_selecao(); st.rerun()
+            except Exception as _e: st.error(f"Erro ao salvar: {_e}")
         if btn_todas:
-            try: save_categoria_override(desc_sel,nova_cat,data_str=None); st.success(f"Todas as transações '{desc_sel[:40]}' → **{nova_cat}**"); load_categoria_overrides.clear(); st.rerun()
+            try: save_categoria_override(desc_sel,nova_cat,data_str=None); load_categoria_overrides.clear(); limpar_selecao(); st.rerun()
             except Exception as _e: st.error(f"Erro ao salvar: {_e}")
 
         st.markdown("<p style='color:#555;font-size:0.72rem;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:0.08em;margin:0.8rem 0 0.2rem;'>tirar dos cálculos</p>",unsafe_allow_html=True)
@@ -909,58 +909,87 @@ with tab4:
         with col_f2: btn_flag=st.button("marcar",use_container_width=True,key="btn_flag_txn")
         with col_f3: btn_unflag=st.button("restaurar",use_container_width=True,key="btn_unflag_txn",disabled=(motivo_sel==""))
         if btn_flag:
-            try: save_transacao_flag(desc_sel,data_sel,valor_sel,ocorr_sel,motivo_novo); st.success(f"Marcada como **{MOTIVOS_FLAG[motivo_novo]}** e removida dos cálculos."); st.rerun()
+            try: _flag_row(sel_row,motivo_novo); limpar_selecao(); st.rerun()
             except Exception as _e: st.error(f"Erro ao marcar: {_e}")
         if btn_unflag:
-            try: delete_transacao_flag(desc_sel,data_sel,valor_sel,ocorr_sel); st.success("Transação restaurada aos cálculos."); st.rerun()
+            try: _unflag_row(sel_row); limpar_selecao(); st.rerun()
             except Exception as _e: st.error(f"Erro ao restaurar: {_e}")
 
-        if len(_sel_rows)>1:
-            st.markdown("<p style='color:#555;font-size:0.72rem;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:0.08em;margin:0.8rem 0 0.2rem;'>seleção múltipla na tabela</p>",unsafe_allow_html=True)
-            _soma=sum(float(show_raw.iloc[i]["valor"]) for i in _sel_rows)
-            _cor="#a8e063" if abs(_soma)<0.01 else "#ff8a8a"
-            st.markdown(f"<p style='color:#555;font-size:0.78rem;font-family:DM Mono,monospace;'>{len(_sel_rows)} linhas · soma: <span style='color:{_cor}'>{fmt_brl_signed(_soma)}</span>{' — zera, provável par' if abs(_soma)<0.01 else ''}</p>",unsafe_allow_html=True)
-            col_p1,col_p2,col_p3=st.columns([2,1,1])
-            with col_p1:
-                motivo_par=st.radio("motivo do par",options=list(MOTIVOS_FLAG.keys()),format_func=lambda m:MOTIVOS_FLAG[m],horizontal=True,index=1,key="tab4_motivo_par",label_visibility="collapsed")
-            with col_p2: btn_par=st.button("marcar todas",use_container_width=True,key="btn_flag_par")
-            with col_p3: btn_par_und=st.button("restaurar todas",use_container_width=True,key="btn_unflag_par")
-            if btn_par or btn_par_und:
-                erros=[]
-                for i in _sel_rows:
-                    r=show_raw.iloc[i]
-                    try:
-                        if btn_par: save_transacao_flag(r["descricao"],r["data"].strftime("%Y-%m-%d"),float(r["valor"]),int(r["_ocorrencia"]),motivo_par)
-                        else: delete_transacao_flag(r["descricao"],r["data"].strftime("%Y-%m-%d"),float(r["valor"]),int(r["_ocorrencia"]))
-                    except Exception as _e: erros.append(f"linha {i}: {_e}")
-                if erros: st.error("Erros:\n"+"\n".join(erros))
-                else:
-                    st.success(f"{len(_sel_rows)} transação(ões) atualizada(s)."); st.rerun()
+        # Sugestões de par: mesmo valor absoluto, sinal oposto, dentro da janela.
+        # Busca no df global (não no filtrado) — a outra ponta costuma estar em
+        # categoria desmarcada na sidebar.
+        _JANELA_PAR=180
+        _cand=df[(df["valor"].round(2)==round(-valor_sel,2))&(df["_flag_key"]!=key_sel)].copy()
+        if not _cand.empty:
+            _cand["_dias"]=(_cand["data"]-sel_row["data"]).dt.days.abs()
+            _cand=_cand[_cand["_dias"]<=_JANELA_PAR].sort_values("_dias").head(8)
+        if not _cand.empty:
+            st.markdown(f"<p style='color:#555;font-size:0.72rem;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:0.08em;margin:0.8rem 0 0.2rem;'>possíveis pares ({len(_cand)}) — mesmo valor, sinal oposto, até {_JANELA_PAR} dias</p>",unsafe_allow_html=True)
+            for _j,(_,_c) in enumerate(_cand.iterrows()):
+                _st_c=status_txn(_c); _cA,_cB=st.columns([6,1])
+                with _cA:
+                    st.markdown(f"<span style='color:{'#555' if _st_c else '#888'};font-size:0.8rem;font-family:DM Mono,monospace'>{_c['data'].strftime('%d/%m/%y')} · {str(_c['descricao'])[:50]} · {fmt_brl_signed(_c['valor'])} · {int(_c['_dias'])}d{(' · '+_st_c) if _st_c else ''}</span>",unsafe_allow_html=True)
+                with _cB:
+                    if st.button("casar",key=f"par_{_j}",use_container_width=True):
+                        try:
+                            _flag_row(sel_row,"reembolso"); _flag_row(_c,"reembolso")
+                            limpar_selecao(); st.rerun()
+                        except Exception as _e: st.error(f"Erro ao casar: {_e}")
+    else:
+        _rows=[show_raw.iloc[i] for i in _sel_rows]
+        _soma=sum(float(r["valor"]) for r in _rows)
+        _cor="#a8e063" if abs(_soma)<0.01 else "#ff8a8a"
+        st.markdown(f"<p style='color:#555;font-size:0.8rem;font-family:DM Mono,monospace;'>{len(_rows)} linhas selecionadas · soma: <span style='color:{_cor}'>{fmt_brl_signed(_soma)}</span>{' — zera, provável par' if abs(_soma)<0.01 else ''}</p>",unsafe_allow_html=True)
 
-        if not df_flags.empty:
-            with st.expander(f"marcações ativas ({len(df_flags)})",expanded=False):
-                for _i,_fl in df_flags.sort_values("data",ascending=False).reset_index(drop=True).iterrows():
-                    cA,cB=st.columns([6,1])
-                    with cA:
-                        st.markdown(f"<span style='color:#888;font-size:0.8rem;font-family:DM Mono,monospace'>{_fl['data']} · {str(_fl['descricao'])[:45]} · {fmt_brl_signed(_fl['valor'])} · <b style='color:#c8f060'>{MOTIVOS_FLAG.get(_fl['motivo'],_fl['motivo'])}</b></span>",unsafe_allow_html=True)
-                    with cB:
-                        if st.button("restaurar",key=f"unflag_{_i}",use_container_width=True):
-                            try: delete_transacao_flag(_fl["descricao"],_fl["data"],_fl["valor"],_fl["ocorrencia"]); st.rerun()
-                            except Exception as _e: st.error(f"Erro: {_e}")
+        st.markdown("<p style='color:#555;font-size:0.72rem;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:0.08em;margin:0.4rem 0 0.2rem;'>tirar dos cálculos</p>",unsafe_allow_html=True)
+        col_p1,col_p2,col_p3=st.columns([2,1,1])
+        with col_p1:
+            motivo_par=st.radio("motivo do par",options=list(MOTIVOS_FLAG.keys()),format_func=lambda m:MOTIVOS_FLAG[m],horizontal=True,index=1,key="tab4_motivo_par",label_visibility="collapsed")
+        with col_p2: btn_par=st.button("marcar todas",use_container_width=True,key="btn_flag_par")
+        with col_p3: btn_par_und=st.button("restaurar todas",use_container_width=True,key="btn_unflag_par")
+        if btn_par or btn_par_und:
+            erros=[]
+            for r in _rows:
+                try:
+                    if btn_par: _flag_row(r,motivo_par)
+                    else: _unflag_row(r)
+                except Exception as _e: erros.append(f"{str(r['descricao'])[:30]}: {_e}")
+            if erros: st.error("Erros:\n"+"\n".join(erros))
+            else: limpar_selecao(); st.rerun()
 
-        if not df_cat_overrides.empty:
-            ov_desc=df_cat_overrides[df_cat_overrides["descricao"]==desc_sel]
-            if not ov_desc.empty:
-                with st.expander(f"overrides de categoria para '{desc_sel[:40]}'",expanded=False):
-                    for _,ov in ov_desc.iterrows():
-                        escopo=f"data {ov['data']}" if ov["data"]!=_SENTINELA else "todas"
-                        st.markdown(f"<span style='color:#888;font-size:0.8rem;font-family:DM Mono,monospace'>{escopo} → <b style='color:#c8f060'>{ov['categoria']}</b></span>",unsafe_allow_html=True)
-        with st.expander("debug",expanded=False):
-            st.write("overrides de categoria:"); st.dataframe(df_cat_overrides)
-            st.write("flags manuais:"); st.dataframe(df_flags)
-            st.write(f"`{desc_sel}` / sentinela `{_SENTINELA}`")
-            st.write(f"chave da flag: `{flag_key(desc_sel,data_sel,valor_sel,ocorr_sel)}`")
-            st.dataframe(df[df["descricao"]==desc_sel][["data","descricao","valor","categoria","_ocorrencia","motivo_flag"]].head(10))
+        st.markdown("<p style='color:#555;font-size:0.72rem;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:0.08em;margin:0.8rem 0 0.2rem;'>categoria</p>",unsafe_allow_html=True)
+        col_m1,col_m2=st.columns([3,1])
+        with col_m1:
+            cat_multi=st.selectbox("categoria das selecionadas",options=todas_cats,key="tab4_cat_multi",label_visibility="collapsed")
+        with col_m2: btn_cat_multi=st.button(f"aplicar a {len(_rows)}",use_container_width=True,key="btn_cat_multi")
+        if btn_cat_multi:
+            erros=[]
+            for r in _rows:
+                try: save_categoria_override(r["descricao"],cat_multi,data_str=r["data"].strftime("%Y-%m-%d"))
+                except Exception as _e: erros.append(f"{str(r['descricao'])[:30]}: {_e}")
+            load_categoria_overrides.clear()
+            if erros: st.error("Erros:\n"+"\n".join(erros))
+            else: limpar_selecao(); st.rerun()
+
+    if not df_flags.empty:
+        with st.expander(f"marcações ativas ({len(df_flags)})",expanded=False):
+            for _i,_fl in df_flags.sort_values("data",ascending=False).reset_index(drop=True).iterrows():
+                cA,cB=st.columns([6,1])
+                with cA:
+                    st.markdown(f"<span style='color:#888;font-size:0.8rem;font-family:DM Mono,monospace'>{_fl['data']} · {str(_fl['descricao'])[:45]} · {fmt_brl_signed(_fl['valor'])} · <b style='color:#c8f060'>{MOTIVOS_FLAG.get(_fl['motivo'],_fl['motivo'])}</b></span>",unsafe_allow_html=True)
+                with cB:
+                    if st.button("restaurar",key=f"unflag_{_i}",use_container_width=True):
+                        try: delete_transacao_flag(_fl["descricao"],_fl["data"],_fl["valor"],_fl["ocorrencia"]); limpar_selecao(); st.rerun()
+                        except Exception as _e: st.error(f"Erro: {_e}")
+
+    with st.expander("debug",expanded=False):
+        st.write("overrides de categoria:"); st.dataframe(df_cat_overrides)
+        st.write("flags manuais:"); st.dataframe(df_flags)
+        st.write(f"linhas selecionadas: {_sel_rows} · sentinela `{_SENTINELA}`")
+        if len(_sel_rows)==1:
+            _d=show_raw.iloc[_sel_rows[0]]["descricao"]
+            st.write(f"chave da flag: `{show_raw.iloc[_sel_rows[0]]['_flag_key']}`")
+            st.dataframe(df[df["descricao"]==_d][["data","descricao","valor","categoria","_ocorrencia","motivo_flag"]].head(10))
 
 # ── Barra deslizante ──────────────────────────────────────────────────────────
 if preset=="Barra deslizante" and len(_meses_disp)>1:
