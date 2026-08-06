@@ -845,7 +845,15 @@ with tab4:
         styles=[""]*len(row); val_idx=list(row.index).index("Valor")
         styles[val_idx]="color: #ff6b6b" if str(row["Valor"]).startswith("- ") else "color: #a8e063"
         return styles
-    st.dataframe(show_display.style.apply(style_row,axis=1),width='stretch',height=400)
+    _tbl_evt=st.dataframe(show_display.style.apply(style_row,axis=1),width='stretch',height=400,
+                          key="tab4_tbl",on_select="rerun",selection_mode="multi-row")
+    # Linhas clicadas na tabela (posições no show_raw). Ctrl/Cmd+clique = múltiplas.
+    def _sel_rows_from(evt):
+        try: return list(evt.selection.rows)
+        except Exception:
+            try: return list(evt["selection"]["rows"])
+            except Exception: return []
+    _sel_rows=[i for i in _sel_rows_from(_tbl_evt) if 0<=i<len(show_raw)]
     n_auto=int((show_raw["reembolsado"]&(show_raw["motivo_flag"]=="")).sum()); n_manual=int((show_raw["motivo_flag"]!="").sum())
     if n_auto or n_manual:
         st.markdown(f"<p style='color:#555;font-size:0.75rem;font-family:DM Mono,monospace;'>cinza = fora dos cálculos · {n_auto} reembolso(s) automático(s) · {n_manual} marcação(ões) manual(is)</p>",unsafe_allow_html=True)
@@ -860,7 +868,17 @@ with tab4:
             return f"#{i} · {data_str} · {str(row['descricao'])[:40]} · {fmt_brl_signed(row['valor'])} · [{row['categoria']}]{st_}"
         opcoes_labels=[_row_label(i,r) for i,r in show_raw.iterrows()]
         opcoes_map={lbl:i for i,lbl in enumerate(opcoes_labels)}
-        sel_label=st.selectbox("selecione a transação",options=opcoes_labels,index=0,key="tab4_sel_txn",label_visibility="collapsed")
+        # clique na tabela manda no seletor, mas só quando a seleção muda —
+        # senão o selectbox ficaria travado na linha clicada a cada rerun.
+        # Se o valor guardado sumiu (filtro mudou), descarta antes de
+        # instanciar o widget pra não estourar.
+        if _sel_rows and _sel_rows != st.session_state.get("_tab4_prev_sel"):
+            st.session_state["tab4_sel_txn"]=opcoes_labels[_sel_rows[0]]
+        elif st.session_state.get("tab4_sel_txn") not in opcoes_labels:
+            st.session_state.pop("tab4_sel_txn",None)
+        st.session_state["_tab4_prev_sel"]=_sel_rows
+        st.caption("clique numa linha da tabela para selecionar · ctrl/cmd+clique para marcar um par")
+        sel_label=st.selectbox("selecione a transação",options=opcoes_labels,key="tab4_sel_txn",label_visibility="collapsed")
         sel_idx=opcoes_map[sel_label]; sel_row=show_raw.iloc[sel_idx]
         desc_sel=sel_row["descricao"]; data_sel=sel_row["data"].strftime("%Y-%m-%d")
         valor_sel=float(sel_row["valor"]); ocorr_sel=int(sel_row["_ocorrencia"])
@@ -897,22 +915,27 @@ with tab4:
             try: delete_transacao_flag(desc_sel,data_sel,valor_sel,ocorr_sel); st.success("Transação restaurada aos cálculos."); st.rerun()
             except Exception as _e: st.error(f"Erro ao restaurar: {_e}")
 
-        with st.expander("marcar par de reembolso (várias de uma vez)",expanded=False):
-            st.caption("Selecione as duas pontas (a despesa e o estorno). Ambas saem dos cálculos.")
-            par_labels=st.multiselect("transações do par",options=opcoes_labels,key="tab4_par_multi",label_visibility="collapsed")
-            motivo_par=st.radio("motivo do par",options=list(MOTIVOS_FLAG.keys()),format_func=lambda m:MOTIVOS_FLAG[m],horizontal=True,index=1,key="tab4_motivo_par",label_visibility="collapsed")
-            if par_labels:
-                _soma=sum(float(show_raw.iloc[opcoes_map[l]]["valor"]) for l in par_labels)
-                _cor="#a8e063" if abs(_soma)<0.01 else "#ff8a8a"
-                st.markdown(f"<p style='color:#555;font-size:0.78rem;font-family:DM Mono,monospace;'>soma da seleção: <span style='color:{_cor}'>{fmt_brl_signed(_soma)}</span>{' — zera' if abs(_soma)<0.01 else ''}</p>",unsafe_allow_html=True)
-            if st.button("marcar seleção",key="btn_flag_par",disabled=(len(par_labels)==0)):
+        if len(_sel_rows)>1:
+            st.markdown("<p style='color:#555;font-size:0.72rem;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:0.08em;margin:0.8rem 0 0.2rem;'>seleção múltipla na tabela</p>",unsafe_allow_html=True)
+            _soma=sum(float(show_raw.iloc[i]["valor"]) for i in _sel_rows)
+            _cor="#a8e063" if abs(_soma)<0.01 else "#ff8a8a"
+            st.markdown(f"<p style='color:#555;font-size:0.78rem;font-family:DM Mono,monospace;'>{len(_sel_rows)} linhas · soma: <span style='color:{_cor}'>{fmt_brl_signed(_soma)}</span>{' — zera, provável par' if abs(_soma)<0.01 else ''}</p>",unsafe_allow_html=True)
+            col_p1,col_p2,col_p3=st.columns([2,1,1])
+            with col_p1:
+                motivo_par=st.radio("motivo do par",options=list(MOTIVOS_FLAG.keys()),format_func=lambda m:MOTIVOS_FLAG[m],horizontal=True,index=1,key="tab4_motivo_par",label_visibility="collapsed")
+            with col_p2: btn_par=st.button("marcar todas",use_container_width=True,key="btn_flag_par")
+            with col_p3: btn_par_und=st.button("restaurar todas",use_container_width=True,key="btn_unflag_par")
+            if btn_par or btn_par_und:
                 erros=[]
-                for lbl in par_labels:
-                    r=show_raw.iloc[opcoes_map[lbl]]
-                    try: save_transacao_flag(r["descricao"],r["data"].strftime("%Y-%m-%d"),float(r["valor"]),int(r["_ocorrencia"]),motivo_par)
-                    except Exception as _e: erros.append(f"{lbl}: {_e}")
+                for i in _sel_rows:
+                    r=show_raw.iloc[i]
+                    try:
+                        if btn_par: save_transacao_flag(r["descricao"],r["data"].strftime("%Y-%m-%d"),float(r["valor"]),int(r["_ocorrencia"]),motivo_par)
+                        else: delete_transacao_flag(r["descricao"],r["data"].strftime("%Y-%m-%d"),float(r["valor"]),int(r["_ocorrencia"]))
+                    except Exception as _e: erros.append(f"linha {i}: {_e}")
                 if erros: st.error("Erros:\n"+"\n".join(erros))
-                else: st.success(f"{len(par_labels)} transação(ões) removida(s) dos cálculos."); st.rerun()
+                else:
+                    st.success(f"{len(_sel_rows)} transação(ões) atualizada(s)."); st.rerun()
 
         if not df_flags.empty:
             with st.expander(f"marcações ativas ({len(df_flags)})",expanded=False):
